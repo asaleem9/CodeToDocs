@@ -1,0 +1,20 @@
+.typewriter-text {
+  display: inline-block;
+  font-family: 'Fira Code', 'Monaco', 'Courier New', monospace;
+}
+
+.typewriter-cursor {
+  display: inline-block;
+  margin-left: 2px;
+  animation: blink 1s step-end infinite;
+  color: #818cf8;
+}
+
+@keyframes blink {
+  0%, 50% {
+    opacity: 1;
+  }
+  51%, 100% {
+    opacity: 0;
+  }
+}

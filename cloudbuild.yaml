@@ -1,0 +1,119 @@
+steps:
+  # Build backend image
+  - name: 'gcr.io/cloud-builders/docker'
+    id: 'build-backend'
+    args:
+      - 'build'
+      - '-t'
+      - 'gcr.io/$PROJECT_ID/codetodocs-backend:$SHORT_SHA'
+      - '-t'
+      - 'gcr.io/$PROJECT_ID/codetodocs-backend:latest'
+      - './backend'
+
+  # Build frontend image
+  - name: 'gcr.io/cloud-builders/docker'
+    id: 'build-frontend'
+    args:
+      - 'build'
+      - '-t'
+      - 'gcr.io/$PROJECT_ID/codetodocs-frontend:$SHORT_SHA'
+      - '-t'
+      - 'gcr.io/$PROJECT_ID/codetodocs-frontend:latest'
+      - '--build-arg'
+      - 'VITE_API_URL=https://codetodocs-backend-${_CLOUD_RUN_REGION}.a.run.app'
+      - './frontend'
+
+  # Push backend image
+  - name: 'gcr.io/cloud-builders/docker'
+    id: 'push-backend'
+    args:
+      - 'push'
+      - '--all-tags'
+      - 'gcr.io/$PROJECT_ID/codetodocs-backend'
+    waitFor: ['build-backend']
+
+  # Push frontend image
+  - name: 'gcr.io/cloud-builders/docker'
+    id: 'push-frontend'
+    args:
+      - 'push'
+      - '--all-tags'
+      - 'gcr.io/$PROJECT_ID/codetodocs-frontend'
+    waitFor: ['build-frontend']
+
+  # Deploy backend to Cloud Run
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    id: 'deploy-backend'
+    entrypoint: gcloud
+    args:
+      - 'run'
+      - 'deploy'
+      - 'codetodocs-backend'
+      - '--image'
+      - 'gcr.io/$PROJECT_ID/codetodocs-backend:$SHORT_SHA'
+      - '--region'
+      - '${_CLOUD_RUN_REGION}'
+      - '--platform'
+      - 'managed'
+      - '--allow-unauthenticated'
+      - '--set-env-vars'
+      - 'NODE_ENV=production,PORT=3001'
+      - '--set-secrets'
+      - 'ANTHROPIC_API_KEY=anthropic-api-key:latest,FRONTEND_URL=frontend-url:latest'
+      - '--memory'
+      - '1Gi'
+      - '--cpu'
+      - '1'
+      - '--max-instances'
+      - '10'
+      - '--min-instances'
+      - '0'
+      - '--timeout'
+      - '300'
+    waitFor: ['push-backend']
+
+  # Deploy frontend to Cloud Run
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    id: 'deploy-frontend'
+    entrypoint: gcloud
+    args:
+      - 'run'
+      - 'deploy'
+      - 'codetodocs-frontend'
+      - '--image'
+      - 'gcr.io/$PROJECT_ID/codetodocs-frontend:$SHORT_SHA'
+      - '--region'
+      - '${_CLOUD_RUN_REGION}'
+      - '--platform'
+      - 'managed'
+      - '--allow-unauthenticated'
+      - '--set-env-vars'
+      - 'VITE_API_URL=https://codetodocs-backend-${_CLOUD_RUN_REGION}.a.run.app'
+      - '--memory'
+      - '512Mi'
+      - '--cpu'
+      - '1'
+      - '--max-instances'
+      - '5'
+      - '--min-instances'
+      - '0'
+    waitFor: ['push-frontend', 'deploy-backend']
+
+# Images to push to Container Registry
+images:
+  - 'gcr.io/$PROJECT_ID/codetodocs-backend:$SHORT_SHA'
+  - 'gcr.io/$PROJECT_ID/codetodocs-backend:latest'
+  - 'gcr.io/$PROJECT_ID/codetodocs-frontend:$SHORT_SHA'
+  - 'gcr.io/$PROJECT_ID/codetodocs-frontend:latest'
+
+# Substitution variables
+substitutions:
+  _CLOUD_RUN_REGION: us-central1
+
+# Build timeout (20 minutes)
+timeout: 1200s
+
+# Build options
+options:
+  machineType: 'E2_HIGHCPU_8'
+  logging: CLOUD_LOGGING_ONLY

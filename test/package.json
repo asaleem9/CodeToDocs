@@ -1,0 +1,14 @@
+{
+  "name": "codetodocsai-tests",
+  "version": "1.0.0",
+  "description": "Test and demo scripts for CodeToDocsAI",
+  "type": "module",
+  "scripts": {
+    "demo": "node demo.js",
+    "demo:all": "node demo.js --all",
+    "test": "node demo.js"
+  },
+  "dependencies": {
+    "axios": "^1.6.0"
+  }
+}

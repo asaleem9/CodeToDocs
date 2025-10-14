@@ -1,0 +1,98 @@
+.code-diff {
+  background: rgba(15, 23, 42, 0.5);
+  border: 1px solid rgba(129, 140, 248, 0.2);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.diff-header {
+  background: rgba(30, 41, 59, 0.8);
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid rgba(129, 140, 248, 0.2);
+}
+
+.diff-stats {
+  display: flex;
+  gap: 1rem;
+  font-family: 'Fira Code', monospace;
+  font-size: 0.875rem;
+}
+
+.additions {
+  color: #10b981;
+  font-weight: 600;
+}
+
+.deletions {
+  color: #ef4444;
+  font-weight: 600;
+}
+
+.diff-content {
+  font-family: 'Fira Code', 'Monaco', 'Courier New', monospace;
+  font-size: 0.875rem;
+  overflow-x: auto;
+}
+
+.diff-line {
+  display: flex;
+  align-items: flex-start;
+  padding: 0.25rem 0;
+  min-height: 1.5rem;
+}
+
+.diff-line-added {
+  background: rgba(16, 185, 129, 0.1);
+  border-left: 3px solid #10b981;
+}
+
+.diff-line-removed {
+  background: rgba(239, 68, 68, 0.1);
+  border-left: 3px solid #ef4444;
+}
+
+.diff-line-unchanged {
+  background: transparent;
+  border-left: 3px solid transparent;
+}
+
+.line-number {
+  display: inline-block;
+  width: 3rem;
+  padding: 0 0.75rem;
+  text-align: right;
+  color: #64748b;
+  user-select: none;
+  flex-shrink: 0;
+}
+
+.line-indicator {
+  display: inline-block;
+  width: 1.5rem;
+  text-align: center;
+  font-weight: bold;
+  flex-shrink: 0;
+}
+
+.diff-line-added .line-indicator {
+  color: #10b981;
+}
+
+.diff-line-removed .line-indicator {
+  color: #ef4444;
+}
+
+.diff-line-unchanged .line-indicator {
+  color: #64748b;
+}
+
+.diff-line pre {
+  margin: 0 !important;
+  padding: 0 !important;
+  background: transparent !important;
+}
+
+.diff-line code {
+  background: transparent !important;
+  padding: 0 !important;
+}

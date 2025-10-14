@@ -1,0 +1,23 @@
+# CODEOWNERS file for CodeToDocsAI
+# This file defines code ownership for the repository
+
+# Default owners for everything in the repo
+* @ali.saleem
+
+# Backend code
+/backend/ @ali.saleem
+
+# Frontend code
+/frontend/ @ali.saleem
+
+# Configuration files
+*.json @ali.saleem
+*.yaml @ali.saleem
+*.yml @ali.saleem
+
+# Documentation
+*.md @ali.saleem
+/docs/ @ali.saleem
+
+# GitHub workflows
+/.github/ @ali.saleem

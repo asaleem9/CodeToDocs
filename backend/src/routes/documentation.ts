@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import { generateDocumentation } from '../services/llmService';
 import { documentationStorage } from '../services/storageService';
 import { QualityScore } from '../services/qualityScoreService';
+import { vectorStore } from '../services/vectorService';
 
 const router = Router();
 
@@ -66,6 +67,18 @@ router.post('/generate', async (req: Request, res: Response) => {
       result.diagram,
       result.qualityScore
     );
+
+    // Auto-index the documentation for Q&A
+    try {
+      await vectorStore.indexDocument(id, result.documentation, {
+        language,
+        filePath: `Generated documentation (${language})`,
+      });
+      console.log(`Stored documentation: ${id} (total: ${documentationStorage.getAll().length})`);
+    } catch (indexError) {
+      console.error('Failed to index documentation for Q&A:', indexError);
+      // Don't fail the request if indexing fails
+    }
 
     // Return successful response with ID
     return res.status(200).json({

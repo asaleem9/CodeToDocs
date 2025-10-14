@@ -5,6 +5,7 @@ import documentationRoutes from './routes/documentation';
 import webhookRoutes from './routes/webhook';
 import batchRoutes from './routes/batch';
 import integrationsRoutes from './routes/integrations';
+import qaRoutes from './routes/qa';
 
 dotenv.config();
 
@@ -44,6 +45,9 @@ app.use('/api/batch', batchRoutes);
 
 // Integrations routes
 app.use('/api/integrations', integrationsRoutes);
+
+// Q&A routes
+app.use('/api/qa', qaRoutes);
 
 app.listen(port, () => {
   console.log(`⚡️[server]: Server is running at http://localhost:${port}`);

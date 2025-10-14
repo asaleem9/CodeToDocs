@@ -43,7 +43,6 @@ function Batch() {
   const [result, setResult] = useState<BatchResult | null>(null)
   const [selectedDoc, setSelectedDoc] = useState<DocumentedFile | null>(null)
   const [maxFiles, setMaxFiles] = useState<number>(50)
-  const [isGeneratingFullDoc, setIsGeneratingFullDoc] = useState<boolean>(false)
   const progressInterval = useRef<ReturnType<typeof setInterval> | null>(null)
 
   useEffect(() => {
@@ -117,6 +116,11 @@ function Batch() {
           setResult(resultRes.data)
           setIsProcessing(false)
 
+          // Automatically select full repo documentation if available
+          if (resultRes.data.fullRepoDocumentation) {
+            setSelectedDoc(null) // null means show full repo doc
+          }
+
           if (progressInterval.current) {
             clearInterval(progressInterval.current)
           }
@@ -161,31 +165,6 @@ function Batch() {
     }
   }
 
-  const handleGenerateFullDoc = async () => {
-    if (!batchId || !result) return
-
-    const loadingToastId = showLoadingToast('Generating full repository documentation...')
-    setIsGeneratingFullDoc(true)
-
-    try {
-      const response = await axios.post(`/api/batch/generate-full-doc/${batchId}`)
-
-      dismissToast(loadingToastId)
-
-      // Update result with full documentation
-      setResult({
-        ...result,
-        fullRepoDocumentation: response.data.fullRepoDocumentation,
-      })
-
-      showSuccessToast('Full repository documentation generated!')
-    } catch (err) {
-      dismissToast(loadingToastId)
-      showErrorToast(err)
-    } finally {
-      setIsGeneratingFullDoc(false)
-    }
-  }
 
   const handleDownloadAll = () => {
     if (!result) return
@@ -319,21 +298,7 @@ function Batch() {
             <div className="result-header">
               <h2>Batch Complete!</h2>
               <div className="header-actions">
-                {!result.fullRepoDocumentation ? (
-                  <button
-                    className="generate-full-doc-btn"
-                    onClick={handleGenerateFullDoc}
-                    disabled={isGeneratingFullDoc}
-                  >
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-                      <polyline points="14 2 14 8 20 8"></polyline>
-                      <line x1="12" y1="18" x2="12" y2="12"></line>
-                      <line x1="9" y1="15" x2="15" y2="15"></line>
-                    </svg>
-                    {isGeneratingFullDoc ? 'Generating...' : 'Generate Full Repo Doc'}
-                  </button>
-                ) : (
+                {result.fullRepoDocumentation && (
                   <button className="download-full-doc-btn" onClick={handleDownloadFullRepo}>
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                       <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
@@ -490,7 +455,7 @@ function Batch() {
                     <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
                       <path d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                     </svg>
-                    <p>Select a file to view its documentation or generate full repository documentation</p>
+                    <p>Select a file from the table of contents to view its documentation</p>
                   </div>
                 )}
               </div>

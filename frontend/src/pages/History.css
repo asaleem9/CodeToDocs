@@ -192,6 +192,12 @@
   font-weight: 500;
 }
 
+.batch-label {
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: #a78bfa;
+}
+
 .delete-btn {
   position: absolute;
   top: 1rem;
@@ -250,7 +256,8 @@
   color: #e2e8f0;
 }
 
-.pr-badge {
+.pr-badge,
+.batch-badge {
   display: flex;
   align-items: center;
   gap: 0.5rem;

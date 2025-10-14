@@ -1,5 +1,8 @@
 import { BrowserRouter, Routes, Route, Link, useLocation } from 'react-router-dom'
 import { Toaster } from 'react-hot-toast'
+import { AuthProvider, useAuth } from './contexts/AuthContext'
+import { BatchProvider } from './contexts/BatchContext'
+import BatchProgressModal from './components/BatchProgressModal'
 import Landing from './pages/Landing'
 import Home from './pages/Home'
 import Settings from './pages/Settings'
@@ -7,11 +10,13 @@ import History from './pages/History'
 import Batch from './pages/Batch'
 import Integrations from './pages/Integrations'
 import QA from './pages/QA'
+import GitHub from './pages/GitHub'
 import Logo from './components/Logo'
 import './App.css'
 
 function Navigation() {
   const location = useLocation()
+  const { user, isAuthenticated, logout } = useAuth()
 
   // Don't show navigation on landing page
   if (location.pathname === '/') {
@@ -73,6 +78,15 @@ function Navigation() {
             History
           </Link>
           <Link
+            to="/app/github"
+            className={`nav-link ${location.pathname === '/app/github' ? 'active' : ''}`}
+          >
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/>
+            </svg>
+            GitHub
+          </Link>
+          <Link
             to="/app/settings"
             className={`nav-link ${location.pathname === '/app/settings' ? 'active' : ''}`}
           >
@@ -83,6 +97,16 @@ function Navigation() {
             Settings
           </Link>
         </nav>
+        {isAuthenticated && user && (
+          <div className="user-menu">
+            <img src={user.avatar_url} alt={user.name} className="user-avatar-small" />
+            <button className="logout-btn" onClick={logout}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4m7 14l5-5-5-5m5 5H9" />
+              </svg>
+            </button>
+          </div>
+        )}
       </div>
     </header>
   )
@@ -91,44 +115,51 @@ function Navigation() {
 function App() {
   return (
     <BrowserRouter>
-      <div className="app">
-        <Toaster
-          position="top-right"
-          toastOptions={{
-            style: {
-              background: '#1e293b',
-              color: '#e2e8f0',
-              border: '1px solid rgba(148, 163, 184, 0.2)',
-            },
-            success: {
-              iconTheme: {
-                primary: '#10b981',
-                secondary: '#1e293b',
-              },
-            },
-            error: {
-              iconTheme: {
-                primary: '#ef4444',
-                secondary: '#1e293b',
-              },
-            },
-          }}
-        />
+      <AuthProvider>
+        <BatchProvider>
+          <div className="app">
+            <Toaster
+              position="top-right"
+              toastOptions={{
+                style: {
+                  background: '#1e293b',
+                  color: '#e2e8f0',
+                  border: '1px solid rgba(148, 163, 184, 0.2)',
+                },
+                success: {
+                  iconTheme: {
+                    primary: '#10b981',
+                    secondary: '#1e293b',
+                  },
+                },
+                error: {
+                  iconTheme: {
+                    primary: '#ef4444',
+                    secondary: '#1e293b',
+                  },
+                },
+              }}
+            />
 
-        <Navigation />
+            <Navigation />
 
-        <main className="app-main">
-          <Routes>
-            <Route path="/" element={<Landing />} />
-            <Route path="/app" element={<Home />} />
-            <Route path="/app/batch" element={<Batch />} />
-            <Route path="/app/qa" element={<QA />} />
-            <Route path="/app/integrations" element={<Integrations />} />
-            <Route path="/app/history" element={<History />} />
-            <Route path="/app/settings" element={<Settings />} />
-          </Routes>
-        </main>
-      </div>
+            <main className="app-main">
+              <Routes>
+                <Route path="/" element={<Landing />} />
+                <Route path="/app" element={<Home />} />
+                <Route path="/app/batch" element={<Batch />} />
+                <Route path="/app/qa" element={<QA />} />
+                <Route path="/app/integrations" element={<Integrations />} />
+                <Route path="/app/history" element={<History />} />
+                <Route path="/app/github" element={<GitHub />} />
+                <Route path="/app/settings" element={<Settings />} />
+              </Routes>
+            </main>
+
+            <BatchProgressModal />
+          </div>
+        </BatchProvider>
+      </AuthProvider>
     </BrowserRouter>
   )
 }

@@ -1,8 +1,10 @@
 import { useState, useEffect, useRef } from 'react'
+import { useLocation } from 'react-router-dom'
 import axios from 'axios'
 import ReactMarkdown from 'react-markdown'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism'
+import { useBatch } from '../contexts/BatchContext'
 import { showErrorToast, showSuccessToast, showLoadingToast, dismissToast } from '../utils/errorHandler'
 import './Batch.css'
 
@@ -36,14 +38,77 @@ interface BatchResult {
 }
 
 function Batch() {
+  const location = useLocation()
+  const batchContext = useBatch()
   const [repoUrl, setRepoUrl] = useState<string>('')
-  const [isProcessing, setIsProcessing] = useState<boolean>(false)
-  const [batchId, setBatchId] = useState<string>('')
-  const [progress, setProgress] = useState<BatchProgress | null>(null)
   const [result, setResult] = useState<BatchResult | null>(null)
   const [selectedDoc, setSelectedDoc] = useState<DocumentedFile | null>(null)
   const [maxFiles, setMaxFiles] = useState<number>(50)
   const progressInterval = useRef<ReturnType<typeof setInterval> | null>(null)
+
+  // Use batch context for state
+  const { isProcessing, batchId, progress } = batchContext
+
+  const startProgressPolling = (id: string) => {
+    progressInterval.current = setInterval(async () => {
+      try {
+        const progressRes = await axios.get(`/api/batch/progress/${id}`)
+
+        if (progressRes.data.completed) {
+          // Fetch final result
+          const resultRes = await axios.get(`/api/batch/result/${id}`)
+          setResult(resultRes.data)
+
+          // Automatically select full repo documentation if available
+          if (resultRes.data.fullRepoDocumentation) {
+            setSelectedDoc(null) // null means show full repo doc
+          }
+
+          if (progressInterval.current) {
+            clearInterval(progressInterval.current)
+          }
+
+          showSuccessToast(`Batch processing complete! ${resultRes.data.successCount}/${resultRes.data.totalFiles} files documented`)
+        }
+
+        if (progressRes.data.error) {
+          if (progressInterval.current) {
+            clearInterval(progressInterval.current)
+          }
+        }
+      } catch (err) {
+        console.error('Error polling progress:', err)
+      }
+    }, 1000)
+  }
+
+  // Check for pre-filled repo URL from navigation state
+  useEffect(() => {
+    if (location.state && location.state.repoUrl) {
+      setRepoUrl(location.state.repoUrl)
+    }
+  }, [location.state])
+
+  // Start polling if there's an active batch when component mounts or batchId changes
+  useEffect(() => {
+    if (batchId && isProcessing && !progressInterval.current) {
+      startProgressPolling(batchId)
+    } else if (batchId && !isProcessing && !result) {
+      // Batch completed but we don't have the result, fetch it
+      const fetchResult = async () => {
+        try {
+          const resultRes = await axios.get(`/api/batch/result/${batchId}`)
+          setResult(resultRes.data)
+          if (resultRes.data.fullRepoDocumentation) {
+            setSelectedDoc(null)
+          }
+        } catch (err) {
+          console.error('Error fetching batch result:', err)
+        }
+      }
+      fetchResult()
+    }
+  }, [batchId, isProcessing, result])
 
   useEffect(() => {
     return () => {
@@ -75,90 +140,30 @@ function Batch() {
     }
 
     const loadingToastId = showLoadingToast('Starting batch processing...')
-    setIsProcessing(true)
-    setProgress(null)
     setResult(null)
     setSelectedDoc(null)
 
     try {
-      const response = await axios.post('/api/batch/start', {
-        repoUrl,
-        options: {
-          maxFiles,
-        }
-      })
-
+      await batchContext.startBatch(repoUrl, maxFiles)
       dismissToast(loadingToastId)
-      setBatchId(response.data.batchId)
-      showSuccessToast('Batch processing started!')
+      showSuccessToast('Batch processing started! You can navigate away and track progress.')
 
-      // Start polling for progress
-      startProgressPolling(response.data.batchId)
+      // Start polling for result
+      startProgressPolling(batchContext.batchId)
     } catch (err: any) {
       dismissToast(loadingToastId)
       showErrorToast(err)
-      setIsProcessing(false)
     }
   }
 
-  const startProgressPolling = (id: string) => {
-    progressInterval.current = setInterval(async () => {
-      try {
-        const progressRes = await axios.get(`/api/batch/progress/${id}`)
-
-        if (progressRes.data.progress) {
-          setProgress(progressRes.data.progress)
-        }
-
-        if (progressRes.data.completed) {
-          // Fetch final result
-          const resultRes = await axios.get(`/api/batch/result/${id}`)
-          setResult(resultRes.data)
-          setIsProcessing(false)
-
-          // Automatically select full repo documentation if available
-          if (resultRes.data.fullRepoDocumentation) {
-            setSelectedDoc(null) // null means show full repo doc
-          }
-
-          if (progressInterval.current) {
-            clearInterval(progressInterval.current)
-          }
-
-          showSuccessToast(`Batch processing complete! ${resultRes.data.successCount}/${resultRes.data.totalFiles} files documented`)
-        }
-
-        if (progressRes.data.error) {
-          showErrorToast({
-            response: {
-              data: { error: progressRes.data.error }
-            }
-          })
-          setIsProcessing(false)
-
-          if (progressInterval.current) {
-            clearInterval(progressInterval.current)
-          }
-        }
-      } catch (err) {
-        console.error('Error polling progress:', err)
-      }
-    }, 1000)
-  }
-
   const handleCancelBatch = async () => {
-    if (!batchId) return
-
     try {
-      await axios.delete(`/api/batch/${batchId}`)
+      await batchContext.cancelBatch()
 
       if (progressInterval.current) {
         clearInterval(progressInterval.current)
       }
 
-      setIsProcessing(false)
-      setProgress(null)
-      setBatchId('')
       showSuccessToast('Batch processing canceled')
     } catch (err) {
       showErrorToast(err)

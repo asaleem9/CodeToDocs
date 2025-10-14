@@ -1,11 +1,15 @@
 import express, { Express, Request, Response } from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
+import session from 'express-session';
+import cookieParser from 'cookie-parser';
 import documentationRoutes from './routes/documentation';
 import webhookRoutes from './routes/webhook';
 import batchRoutes from './routes/batch';
 import integrationsRoutes from './routes/integrations';
 import qaRoutes from './routes/qa';
+import authRoutes from './routes/auth';
+import settingsRoutes from './routes/settings';
 
 dotenv.config();
 
@@ -21,6 +25,24 @@ app.use(cors({
   origin: frontendUrl,
   credentials: true
 }));
+
+// Cookie parser
+app.use(cookieParser());
+
+// Session configuration
+app.use(
+  session({
+    secret: process.env.SESSION_SECRET || 'your-secret-key-change-in-production',
+    resave: false,
+    saveUninitialized: false,
+    cookie: {
+      secure: process.env.NODE_ENV === 'production',
+      httpOnly: true,
+      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+      sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+    },
+  })
+);
 
 // Body parser
 app.use(express.json());
@@ -48,6 +70,12 @@ app.use('/api/integrations', integrationsRoutes);
 
 // Q&A routes
 app.use('/api/qa', qaRoutes);
+
+// Auth routes
+app.use('/api/auth', authRoutes);
+
+// Settings routes
+app.use('/api/settings', settingsRoutes);
 
 app.listen(port, () => {
   console.log(`⚡️[server]: Server is running at http://localhost:${port}`);

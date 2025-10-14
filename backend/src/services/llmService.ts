@@ -1,6 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { calculateQualityScore, QualityScore } from './qualityScoreService';
 import { parseGraphQLSchema, generateGraphQLDiagram, generateExampleQueries } from '../utils/graphqlParser';
+import { settingsService } from './settingsService';
 import {
   calculateQueryComplexity,
   detectN1Problems,
@@ -110,15 +111,19 @@ Return ONLY the Mermaid diagram code without any explanation or markdown code bl
 
     const anthropic = getAnthropicClient();
 
+    // Get selected model from settings
+    const selectedModel = settingsService.getClaudeModel();
+    console.log(`Using Claude model: ${selectedModel}`);
+
     // Generate documentation and diagram in parallel
     const [docMessage, diagramMessage] = await Promise.all([
       anthropic.messages.create({
-        model: 'claude-sonnet-4-20250514',
+        model: selectedModel,
         max_tokens: 4096,
         messages: [{ role: 'user', content: documentationPrompt }],
       }),
       anthropic.messages.create({
-        model: 'claude-sonnet-4-20250514',
+        model: selectedModel,
         max_tokens: 2048,
         messages: [{ role: 'user', content: diagramPrompt }],
       }),

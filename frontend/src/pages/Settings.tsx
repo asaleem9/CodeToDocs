@@ -1,23 +1,38 @@
 import { useState, useEffect } from 'react'
-import { showErrorToast, showSuccessToast, showWarningToast } from '../utils/errorHandler'
+import axios from 'axios'
+import { showErrorToast, showSuccessToast, showWarningToast, showLoadingToast, dismissToast } from '../utils/errorHandler'
 import './Settings.css'
+
+type ClaudeModel = 'claude-sonnet-4-20250514' | 'claude-3-5-haiku-20241022'
 
 function Settings() {
   const [apiKey, setApiKey] = useState('')
-  const [provider, setProvider] = useState<'claude' | 'openai'>('claude')
   const [showApiKey, setShowApiKey] = useState(false)
+  const [claudeModel, setClaudeModel] = useState<ClaudeModel>('claude-3-5-haiku-20241022')
   const webhookUrl = `${window.location.origin}/api/webhook/github`
 
-  // Load settings from localStorage on mount
+  // Load settings from localStorage and backend on mount
   useEffect(() => {
     const savedApiKey = localStorage.getItem('anthropic_api_key') || ''
-    const savedProvider = (localStorage.getItem('ai_provider') as 'claude' | 'openai') || 'claude'
 
     setApiKey(savedApiKey)
-    setProvider(savedProvider)
+
+    // Fetch model preference from backend
+    const fetchModelPreference = async () => {
+      try {
+        const response = await axios.get('/api/settings/model')
+        if (response.data.model) {
+          setClaudeModel(response.data.model)
+        }
+      } catch (error) {
+        console.error('Error fetching model preference:', error)
+      }
+    }
+
+    fetchModelPreference()
   }, [])
 
-  const handleSaveSettings = () => {
+  const handleSaveSettings = async () => {
     if (!apiKey.trim()) {
       showErrorToast({
         response: {
@@ -28,15 +43,25 @@ function Settings() {
     }
 
     // Validate API key format
-    if (provider === 'claude' && !apiKey.startsWith('sk-ant-')) {
+    if (!apiKey.startsWith('sk-ant-')) {
       showWarningToast('API key should start with "sk-ant-" for Claude. Please verify your key.')
     }
 
-    // Save to localStorage
-    localStorage.setItem('anthropic_api_key', apiKey)
-    localStorage.setItem('ai_provider', provider)
+    const loadingToastId = showLoadingToast('Saving settings...')
 
-    showSuccessToast('Settings saved successfully!')
+    try {
+      // Save to localStorage
+      localStorage.setItem('anthropic_api_key', apiKey)
+
+      // Save model preference to backend
+      await axios.post('/api/settings/model', { model: claudeModel })
+
+      dismissToast(loadingToastId)
+      showSuccessToast('Settings saved successfully!')
+    } catch (error) {
+      dismissToast(loadingToastId)
+      showErrorToast(error)
+    }
   }
 
   const handleCopyWebhookUrl = async () => {
@@ -54,9 +79,7 @@ function Settings() {
     }
 
     localStorage.removeItem('anthropic_api_key')
-    localStorage.removeItem('ai_provider')
     setApiKey('')
-    setProvider('claude')
     showSuccessToast('Settings cleared')
   }
 
@@ -69,49 +92,6 @@ function Settings() {
         </header>
 
         <div className="settings-sections">
-          {/* AI Provider Section */}
-          <section className="settings-section">
-            <h2>AI Provider</h2>
-            <p className="section-description">Choose your preferred AI provider for documentation generation</p>
-
-            <div className="provider-options">
-              <label className={`provider-option ${provider === 'claude' ? 'active' : ''}`}>
-                <input
-                  type="radio"
-                  name="provider"
-                  value="claude"
-                  checked={provider === 'claude'}
-                  onChange={(e) => setProvider(e.target.value as 'claude')}
-                />
-                <div className="provider-content">
-                  <div className="provider-header">
-                    <span className="provider-name">Claude (Anthropic)</span>
-                    <span className="badge badge-active">Active</span>
-                  </div>
-                  <p className="provider-description">Claude 3.5 Sonnet - Advanced code understanding</p>
-                </div>
-              </label>
-
-              <label className={`provider-option ${provider === 'openai' ? 'active' : ''} disabled`}>
-                <input
-                  type="radio"
-                  name="provider"
-                  value="openai"
-                  disabled
-                  checked={provider === 'openai'}
-                  onChange={(e) => setProvider(e.target.value as 'openai')}
-                />
-                <div className="provider-content">
-                  <div className="provider-header">
-                    <span className="provider-name">OpenAI</span>
-                    <span className="badge badge-soon">Coming Soon</span>
-                  </div>
-                  <p className="provider-description">GPT-4 support coming in a future update</p>
-                </div>
-              </label>
-            </div>
-          </section>
-
           {/* API Key Section */}
           <section className="settings-section">
             <h2>API Configuration</h2>
@@ -152,6 +132,59 @@ function Settings() {
                   console.anthropic.com
                 </a>
               </p>
+            </div>
+          </section>
+
+          {/* Claude Model Selection */}
+          <section className="settings-section">
+            <h2>Claude Model</h2>
+            <p className="section-description">Choose which Claude model to use for documentation generation</p>
+
+            <div className="model-options">
+              <label className={`model-option ${claudeModel === 'claude-3-5-haiku-20241022' ? 'active' : ''}`}>
+                <input
+                  type="radio"
+                  name="claudeModel"
+                  value="claude-3-5-haiku-20241022"
+                  checked={claudeModel === 'claude-3-5-haiku-20241022'}
+                  onChange={(e) => setClaudeModel(e.target.value as ClaudeModel)}
+                />
+                <div className="model-content">
+                  <div className="model-header">
+                    <span className="model-name">Claude 3.5 Haiku</span>
+                    <span className="badge badge-fast">Faster</span>
+                    <span className="badge badge-recommended">Recommended</span>
+                  </div>
+                  <p className="model-description">Best for quick responses and everyday documentation tasks</p>
+                  <div className="model-specs">
+                    <span className="spec">⚡ Faster response</span>
+                    <span className="spec">💰 Lower cost</span>
+                    <span className="spec">✨ Great quality</span>
+                  </div>
+                </div>
+              </label>
+
+              <label className={`model-option ${claudeModel === 'claude-sonnet-4-20250514' ? 'active' : ''}`}>
+                <input
+                  type="radio"
+                  name="claudeModel"
+                  value="claude-sonnet-4-20250514"
+                  checked={claudeModel === 'claude-sonnet-4-20250514'}
+                  onChange={(e) => setClaudeModel(e.target.value as ClaudeModel)}
+                />
+                <div className="model-content">
+                  <div className="model-header">
+                    <span className="model-name">Claude Sonnet 4.5</span>
+                    <span className="badge badge-advanced">Advanced</span>
+                  </div>
+                  <p className="model-description">Maximum intelligence for complex codebases and advanced analysis</p>
+                  <div className="model-specs">
+                    <span className="spec">🧠 Highest intelligence</span>
+                    <span className="spec">📊 Complex analysis</span>
+                    <span className="spec">⏱️ Slower response</span>
+                  </div>
+                </div>
+              </label>
             </div>
           </section>
 

@@ -129,10 +129,97 @@
   color: #fbbf24;
 }
 
+.badge-fast {
+  background: rgba(16, 185, 129, 0.2);
+  color: #10b981;
+}
+
+.badge-recommended {
+  background: rgba(129, 140, 248, 0.2);
+  color: #818cf8;
+}
+
+.badge-advanced {
+  background: rgba(192, 132, 252, 0.2);
+  color: #c084fc;
+}
+
 .provider-description {
   font-size: 0.875rem;
   color: #94a3b8;
   margin: 0;
+}
+
+/* Model Options */
+.model-options {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.model-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 1rem;
+  padding: 1.25rem;
+  background: rgba(15, 23, 42, 0.4);
+  border: 2px solid rgba(148, 163, 184, 0.1);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.model-option:hover {
+  border-color: rgba(129, 140, 248, 0.3);
+  background: rgba(15, 23, 42, 0.6);
+}
+
+.model-option.active {
+  border-color: #818cf8;
+  background: rgba(129, 140, 248, 0.1);
+}
+
+.model-option input[type="radio"] {
+  margin-top: 0.25rem;
+  accent-color: #818cf8;
+}
+
+.model-content {
+  flex: 1;
+}
+
+.model-header {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.model-name {
+  font-size: 1rem;
+  font-weight: 600;
+  color: #e2e8f0;
+}
+
+.model-description {
+  font-size: 0.875rem;
+  color: #94a3b8;
+  margin: 0 0 0.75rem 0;
+}
+
+.model-specs {
+  display: flex;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.spec {
+  font-size: 0.813rem;
+  color: #cbd5e1;
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
 }
 
 /* Form Group */

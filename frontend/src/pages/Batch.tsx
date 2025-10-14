@@ -8,14 +8,6 @@ import { useBatch } from '../contexts/BatchContext'
 import { showErrorToast, showSuccessToast, showLoadingToast, dismissToast } from '../utils/errorHandler'
 import './Batch.css'
 
-interface BatchProgress {
-  total: number
-  completed: number
-  current: string
-  percentage: number
-  failed: number
-}
-
 interface DocumentedFile {
   filePath: string
   language: string

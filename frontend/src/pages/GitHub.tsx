@@ -19,7 +19,6 @@ interface GitHubRepository {
 
 function GitHub() {
   const [githubToken, setGithubToken] = useState<string>('')
-  const [isAuthenticated, setIsAuthenticated] = useState(false)
   const [username, setUsername] = useState<string>('')
   const [avatarUrl, setAvatarUrl] = useState<string>('')
   const [repositories, setRepositories] = useState<GitHubRepository[]>([])
@@ -37,7 +36,6 @@ function GitHub() {
       setGithubToken(savedToken)
       setUsername(savedUsername)
       setAvatarUrl(savedAvatar || '')
-      setIsAuthenticated(true)
       setShowTokenInput(false)
       fetchRepositories(savedToken)
     }
@@ -66,7 +64,6 @@ function GitHub() {
       const user = response.data
       setUsername(user.login)
       setAvatarUrl(user.avatar_url)
-      setIsAuthenticated(true)
       setShowTokenInput(false)
 
       // Store in localStorage
@@ -96,7 +93,6 @@ function GitHub() {
     setGithubToken('')
     setUsername('')
     setAvatarUrl('')
-    setIsAuthenticated(false)
     setShowTokenInput(true)
     setRepositories([])
     showSuccessToast('Disconnected from GitHub')

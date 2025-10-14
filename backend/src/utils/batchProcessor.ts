@@ -670,6 +670,17 @@ export async function processRepository(
     // Generate summary
     result.summary = generateBatchSummary(result);
 
+    // Automatically generate full repository documentation
+    try {
+      console.log('Auto-generating full repository documentation...');
+      result.fullRepoDocumentation = await generateFullRepoDocumentation(result);
+      console.log('Full repository documentation generated successfully');
+    } catch (error: any) {
+      console.error('Failed to generate full repository documentation:', error);
+      // Don't fail the entire batch if full doc generation fails
+      result.fullRepoDocumentation = undefined;
+    }
+
     console.log(`Batch processing complete: ${result.successCount}/${result.totalFiles} successful`);
 
     return result;

@@ -1,5 +1,6 @@
 import express, { Request, Response } from 'express';
 import { processRepository, BatchProgress, generateFullRepoDocumentation } from '../utils/batchProcessor';
+import { documentationStorage } from '../services/storageService';
 
 const router = express.Router();
 
@@ -66,6 +67,21 @@ router.post('/start', async (req: Request, res: Response) => {
         const batch = activeBatches.get(batchId);
         if (batch) {
           batch.result = result;
+
+          // Store batch result in history if full repo documentation is available
+          if (result.fullRepoDocumentation) {
+            try {
+              documentationStorage.storeBatch(
+                result.fullRepoDocumentation,
+                result.repoUrl,
+                result.totalFiles,
+                result.successCount,
+                result.failedCount
+              );
+            } catch (error) {
+              console.error('Error storing batch in history:', error);
+            }
+          }
         }
       })
       .catch((error) => {

@@ -409,13 +409,43 @@ async function processPRFiles(prData: PRData): Promise<void> {
     const [owner, repo] = prData.repository.split('/');
 
     console.log(`Processing webhook for repository: ${owner}/${repo}`);
+    console.log(`PR author: ${prData.author}`);
 
-    // Step 1: Get token for repository owner (try OAuth first, fall back to deployment token)
-    const token = getGitHubTokenByUsername(owner);
+    // Step 1: Get token using smart lookup strategy
+    // Try PR author first (person who created the PR), then repo owner, then deployment token
+    let token: string | null = null;
+    let tokenSource: string = '';
+
+    // Try PR author's token first
+    token = tokenStorage.getByUsername(prData.author);
+    if (token) {
+      tokenSource = `PR author (${prData.author})`;
+      console.log(`✓ Using OAuth token from ${tokenSource}`);
+    }
+
+    // Fall back to repository owner's token
+    if (!token && owner !== prData.author) {
+      token = tokenStorage.getByUsername(owner);
+      if (token) {
+        tokenSource = `repository owner (${owner})`;
+        console.log(`✓ Using OAuth token from ${tokenSource}`);
+      }
+    }
+
+    // Fall back to deployment token
     if (!token) {
-      const errorMsg = `No GitHub token available for ${owner}`;
+      token = process.env.GITHUB_TOKEN || null;
+      if (token) {
+        tokenSource = 'deployment GITHUB_TOKEN';
+        console.log(`✓ Using ${tokenSource}`);
+      }
+    }
+
+    if (!token) {
+      const errorMsg = `No GitHub token available for ${owner}/${repo}`;
       console.warn(errorMsg);
-      console.warn('Repository owner should authenticate via GitHub OAuth, or set GITHUB_TOKEN in deployment');
+      console.warn(`Tried: PR author (${prData.author}), repo owner (${owner}), and GITHUB_TOKEN`);
+      console.warn('Either authenticate via GitHub OAuth or set GITHUB_TOKEN in deployment');
 
       // Update status to error
       webhookStatus.lastError = `PR #${prData.prNumber}: ${errorMsg}`;
@@ -428,15 +458,20 @@ async function processPRFiles(prData: PRData): Promise<void> {
       return;
     }
 
-    // Step 2: Fetch repository owner's GitHub user ID
-    console.log(`Fetching GitHub user ID for repository owner: ${owner}...`);
-    const ownerUserId = await fetchGitHubUserId(owner, token);
+    // Step 2: Fetch PR author's GitHub user ID (store docs under their account)
+    console.log(`Fetching GitHub user ID for PR author: ${prData.author}...`);
+    let userId = await fetchGitHubUserId(prData.author, token);
 
-    if (!ownerUserId) {
-      console.error(`Failed to fetch GitHub user ID for ${owner} - using userId 0 as fallback`);
+    if (!userId) {
+      console.warn(`Failed to fetch GitHub user ID for PR author ${prData.author}, trying repo owner...`);
+      userId = await fetchGitHubUserId(owner, token);
     }
 
-    const userId = ownerUserId || 0;
+    if (!userId) {
+      console.error(`Failed to fetch GitHub user ID for both PR author and repo owner - using userId 0 as fallback`);
+      userId = 0;
+    }
+
     console.log(`Using userId ${userId} for storing documentation`);
 
     // Fetch PR files

@@ -50,7 +50,10 @@ function Home() {
   const [isDiagramCollapsed, setIsDiagramCollapsed] = useState<boolean>(false)
   const [showDemoMenu, setShowDemoMenu] = useState<boolean>(false)
   const [showExportMenu, setShowExportMenu] = useState<boolean>(false)
+  const [progress, setProgress] = useState<number>(0)
+  const [progressStatus, setProgressStatus] = useState<string>('')
   const diagramRef = useRef<HTMLDivElement>(null)
+  const progressIntervalRef = useRef<number | null>(null)
 
   // Render diagram when it changes
   useEffect(() => {
@@ -88,6 +91,59 @@ function Home() {
     }
   }, [diagram])
 
+  const startProgressPolling = (jobId: string) => {
+    progressIntervalRef.current = window.setInterval(async () => {
+      try {
+        const progressResponse = await axios.get(`/api/generate/progress/${jobId}`)
+
+        setProgress(progressResponse.data.progress.percentage)
+        setProgressStatus(progressResponse.data.progress.status)
+
+        // Check if completed
+        if (progressResponse.data.completed || progressResponse.data.error) {
+          if (progressIntervalRef.current) {
+            clearInterval(progressIntervalRef.current)
+            progressIntervalRef.current = null
+          }
+
+          if (progressResponse.data.error) {
+            setError(progressResponse.data.error)
+            showErrorToast({ response: { data: { error: progressResponse.data.error } } })
+            setIsLoading(false)
+            setProgress(0)
+            setProgressStatus('')
+            return
+          }
+
+          // Fetch the result
+          const resultResponse = await axios.get(`/api/generate/result/${jobId}`)
+          setDocumentation(resultResponse.data.documentation)
+          if (resultResponse.data.diagram) {
+            setDiagram(resultResponse.data.diagram)
+          }
+          if (resultResponse.data.qualityScore) {
+            setQualityScore(resultResponse.data.qualityScore)
+          }
+          showSuccessToast('Documentation generated successfully!')
+          setIsLoading(false)
+          setProgress(0)
+          setProgressStatus('')
+        }
+      } catch (err: any) {
+        if (progressIntervalRef.current) {
+          clearInterval(progressIntervalRef.current)
+          progressIntervalRef.current = null
+        }
+        const errorMessage = err.response?.data?.error || 'Failed to generate documentation'
+        setError(errorMessage)
+        showErrorToast(err)
+        setIsLoading(false)
+        setProgress(0)
+        setProgressStatus('')
+      }
+    }, 500) // Poll every 500ms
+  }
+
   const handleGenerateDocumentation = async () => {
     if (!code.trim()) {
       showErrorToast({
@@ -98,39 +154,43 @@ function Home() {
       return
     }
 
-    const loadingToastId = showLoadingToast('Generating documentation with AI...')
     setIsLoading(true)
     setError('')
     setDocumentation('')
     setDiagram('')
     setQualityScore(null)
+    setProgress(0)
+    setProgressStatus('Starting...')
 
     try {
+      // Start the job
       const response = await axios.post('/api/generate', {
         code,
         language
-      }, {
-        timeout: 60000 // 60 second timeout
       })
 
-      dismissToast(loadingToastId)
-      setDocumentation(response.data.documentation)
-      if (response.data.diagram) {
-        setDiagram(response.data.diagram)
-      }
-      if (response.data.qualityScore) {
-        setQualityScore(response.data.qualityScore)
-      }
-      showSuccessToast('Documentation generated successfully!')
+      const jobId = response.data.jobId
+
+      // Start polling for progress
+      startProgressPolling(jobId)
     } catch (err: any) {
-      dismissToast(loadingToastId)
       const errorMessage = err.response?.data?.error || 'Failed to generate documentation'
       setError(errorMessage)
       showErrorToast(err)
-    } finally {
       setIsLoading(false)
+      setProgress(0)
+      setProgressStatus('')
     }
   }
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (progressIntervalRef.current) {
+        clearInterval(progressIntervalRef.current)
+      }
+    }
+  }, [])
 
   const handleClear = () => {
     setCode('')
@@ -246,10 +306,22 @@ function Home() {
           disabled={isLoading || !code.trim()}
         >
           {isLoading ? (
-            <>
-              <span className="spinner"></span>
-              Generating...
-            </>
+            <div style={{ display: 'flex', flexDirection: 'column', width: '100%', gap: '0.5rem' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', justifyContent: 'center' }}>
+                <span className="spinner"></span>
+                <span>{progressStatus || 'Generating...'}</span>
+              </div>
+              {progress > 0 && (
+                <div className="progress-bar-container">
+                  <div
+                    className="progress-bar-fill"
+                    style={{ width: `${progress}%` }}
+                  >
+                    <span className="progress-percentage">{progress}%</span>
+                  </div>
+                </div>
+              )}
+            </div>
           ) : (
             'Generate Documentation'
           )}

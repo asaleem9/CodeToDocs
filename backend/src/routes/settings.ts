@@ -54,6 +54,7 @@ router.post('/model', (req: Request, res: Response) => {
     // Validate model
     const validModels: ClaudeModel[] = [
       'claude-sonnet-4-20250514',
+      'claude-haiku-4-5-20251001',
       'claude-3-5-haiku-20241022',
     ];
 

@@ -3,7 +3,7 @@
  * Using in-memory storage for simplicity
  */
 
-export type ClaudeModel = 'claude-sonnet-4-20250514' | 'claude-3-5-haiku-20241022';
+export type ClaudeModel = 'claude-sonnet-4-20250514' | 'claude-haiku-4-5-20251001' | 'claude-3-5-haiku-20241022';
 
 export interface UserSettings {
   claudeModel: ClaudeModel;
@@ -13,9 +13,9 @@ class SettingsService {
   private settings: UserSettings;
 
   constructor() {
-    // Default to Haiku 3.5 for faster responses
+    // Default to Haiku 4.5 for best performance and cost
     this.settings = {
-      claudeModel: 'claude-3-5-haiku-20241022',
+      claudeModel: 'claude-haiku-4-5-20251001',
     };
   }
 
@@ -58,7 +58,7 @@ class SettingsService {
    */
   resetSettings(): UserSettings {
     this.settings = {
-      claudeModel: 'claude-3-5-haiku-20241022',
+      claudeModel: 'claude-haiku-4-5-20251001',
     };
     console.log('Settings reset to defaults');
     return this.getSettings();

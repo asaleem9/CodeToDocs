@@ -319,13 +319,13 @@ export async function processBatch(
     const chunkResults = await Promise.all(
       chunk.map(async (file) => {
         try {
-          // Report progress
+          // Report progress (files take up 0-95%)
           if (onProgress) {
             onProgress({
               total: files.length,
               completed,
               current: file.path,
-              percentage: Math.round((completed / files.length) * 100),
+              percentage: Math.round((completed / files.length) * 95),
               failed,
             });
           }
@@ -374,13 +374,13 @@ export async function processBatch(
       }
     }
 
-    // Report progress after chunk
+    // Report progress after chunk (files take up 0-95%)
     if (onProgress) {
       onProgress({
         total: files.length,
         completed,
-        current: completed < files.length ? files[completed].path : 'Complete',
-        percentage: Math.round((completed / files.length) * 100),
+        current: completed < files.length ? files[completed].path : 'Generating full repository documentation...',
+        percentage: Math.round((completed / files.length) * 95),
         failed,
       });
     }
@@ -393,18 +393,7 @@ export async function processBatch(
     }
   }
 
-  // Final progress update
-  if (onProgress) {
-    onProgress({
-      total: files.length,
-      completed,
-      current: 'Complete',
-      percentage: 100,
-      failed,
-    });
-  }
-
-  console.log(`Batch processing complete: ${completed - failed}/${completed} successful`);
+  console.log(`File processing complete: ${completed - failed}/${completed} successful`);
 
   return results;
 }
@@ -526,6 +515,7 @@ export async function cleanupTempDir(dir: string): Promise<void> {
  */
 export async function generateFullRepoDocumentation(result: BatchResult): Promise<string> {
   const Anthropic = (await import('@anthropic-ai/sdk')).default;
+  const { settingsService } = await import('../services/settingsService');
 
   // Get Anthropic API key
   const apiKey = process.env.ANTHROPIC_API_KEY;
@@ -602,8 +592,12 @@ Provide the documentation in well-structured Markdown format.`;
   try {
     console.log('Generating full repository documentation with Claude...');
 
+    // Get selected model from settings
+    const selectedModel = settingsService.getClaudeModel();
+    console.log(`Using Claude model for full repo doc: ${selectedModel}`);
+
     const response = await anthropic.messages.create({
-      model: 'claude-sonnet-4-20250514',
+      model: selectedModel,
       max_tokens: 4000,
       messages: [
         {
@@ -670,6 +664,17 @@ export async function processRepository(
     // Generate summary
     result.summary = generateBatchSummary(result);
 
+    // Update progress: Starting full repo documentation (95%)
+    if (onProgress) {
+      onProgress({
+        total: files.length,
+        completed: files.length,
+        current: 'Generating full repository documentation...',
+        percentage: 95,
+        failed: documents.filter(d => !d.success).length,
+      });
+    }
+
     // Automatically generate full repository documentation
     try {
       console.log('Auto-generating full repository documentation...');
@@ -679,6 +684,17 @@ export async function processRepository(
       console.error('Failed to generate full repository documentation:', error);
       // Don't fail the entire batch if full doc generation fails
       result.fullRepoDocumentation = undefined;
+    }
+
+    // Final progress update: Complete (100%)
+    if (onProgress) {
+      onProgress({
+        total: files.length,
+        completed: files.length,
+        current: 'Complete',
+        percentage: 100,
+        failed: documents.filter(d => !d.success).length,
+      });
     }
 
     console.log(`Batch processing complete: ${result.successCount}/${result.totalFiles} successful`);

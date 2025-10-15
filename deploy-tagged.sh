@@ -137,7 +137,9 @@ fi
 
 # Grant access to secrets
 PROJECT_NUMBER=$(gcloud projects describe $PROJECT_ID --format='value(projectNumber)')
-for secret in $SECRET_NAME $GITHUB_CLIENT_ID_SECRET $GITHUB_CLIENT_SECRET_SECRET $SESSION_SECRET_NAME; do
+SECRETS_LIST="$SECRET_NAME $GITHUB_CLIENT_ID_SECRET $GITHUB_CLIENT_SECRET_SECRET $SESSION_SECRET_NAME"
+
+for secret in $SECRETS_LIST; do
     gcloud secrets add-iam-policy-binding $secret \
       --member="serviceAccount:${PROJECT_NUMBER}-compute@developer.gserviceaccount.com" \
       --role="roles/secretmanager.secretAccessor" \
@@ -152,13 +154,16 @@ echo -e "${BLUE}This may take 5-10 minutes...${NC}"
 
 cd backend
 
+# Build secrets string
+BACKEND_SECRETS="ANTHROPIC_API_KEY=${SECRET_NAME}:latest,GITHUB_CLIENT_ID=${GITHUB_CLIENT_ID_SECRET}:latest,GITHUB_CLIENT_SECRET=${GITHUB_CLIENT_SECRET_SECRET}:latest,SESSION_SECRET=${SESSION_SECRET_NAME}:latest"
+
 gcloud run deploy codetodocs-backend \
   --source . \
   --region $REGION \
   --platform managed \
   --allow-unauthenticated \
   --set-env-vars "NODE_ENV=production" \
-  --set-secrets "ANTHROPIC_API_KEY=${SECRET_NAME}:latest,GITHUB_CLIENT_ID=${GITHUB_CLIENT_ID_SECRET}:latest,GITHUB_CLIENT_SECRET=${GITHUB_CLIENT_SECRET_SECRET}:latest,SESSION_SECRET=${SESSION_SECRET_NAME}:latest" \
+  --set-secrets "$BACKEND_SECRETS" \
   --update-labels="${TAG_KEY}=${TAG_VALUE}" \
   --memory 1Gi \
   --cpu 1 \

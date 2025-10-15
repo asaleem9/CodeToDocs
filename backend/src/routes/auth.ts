@@ -1,5 +1,6 @@
 import express, { Request, Response } from 'express';
 import { exchangeCodeForToken, getGitHubUser, getUserRepositories } from '../services/authService';
+import { tokenStorage } from '../services/tokenStorage';
 
 const router = express.Router();
 
@@ -51,6 +52,9 @@ router.get('/github/callback', async (req: Request, res: Response) => {
 
     // Get user information
     const user = await getGitHubUser(accessToken);
+
+    // Store OAuth token for webhook use
+    tokenStorage.store(user.id, accessToken, user.login);
 
     // Store user session (still useful for backend tracking)
     if (req.session) {
@@ -134,6 +138,11 @@ router.get('/repositories', async (req: Request, res: Response) => {
  * Logout user and destroy session
  */
 router.post('/logout', (req: Request, res: Response) => {
+  // Remove stored OAuth token
+  if (req.session?.user?.id) {
+    tokenStorage.remove(req.session.user.id);
+  }
+
   if (req.session) {
     req.session.destroy((err) => {
       if (err) {

@@ -1,15 +1,31 @@
 import { useState, useEffect } from 'react'
 import axios from 'axios'
 import { showErrorToast, showSuccessToast, showWarningToast, showLoadingToast, dismissToast } from '../utils/errorHandler'
+import config from '../config'
 import './Settings.css'
 
 type ClaudeModel = 'claude-sonnet-4-20250514' | 'claude-haiku-4-5-20251001' | 'claude-3-5-haiku-20241022'
+
+interface WebhookStatus {
+  lastTrigger: string | null
+  totalReceived: number
+  totalProcessed: number
+  lastError: string | null
+  recentEvents: Array<{
+    timestamp: string
+    event: string
+    prNumber?: number
+    repository?: string
+    status: 'received' | 'processed' | 'error'
+  }>
+}
 
 function Settings() {
   const [apiKey, setApiKey] = useState('')
   const [showApiKey, setShowApiKey] = useState(false)
   const [claudeModel, setClaudeModel] = useState<ClaudeModel>('claude-haiku-4-5-20251001')
-  const webhookUrl = `${window.location.origin}/api/webhook/github`
+  const [webhookStatus, setWebhookStatus] = useState<WebhookStatus | null>(null)
+  const webhookUrl = `${config.apiUrl}/api/webhook/github`
 
   // Load settings from localStorage and backend on mount
   useEffect(() => {
@@ -29,7 +45,22 @@ function Settings() {
       }
     }
 
+    // Fetch webhook status
+    const fetchWebhookStatus = async () => {
+      try {
+        const response = await axios.get('/api/webhook/status')
+        setWebhookStatus(response.data)
+      } catch (error) {
+        console.error('Error fetching webhook status:', error)
+      }
+    }
+
     fetchModelPreference()
+    fetchWebhookStatus()
+
+    // Refresh webhook status every 10 seconds
+    const interval = setInterval(fetchWebhookStatus, 10000)
+    return () => clearInterval(interval)
   }, [])
 
   const handleSaveSettings = async () => {
@@ -239,6 +270,63 @@ function Settings() {
                 <li>Save the webhook</li>
               </ol>
             </div>
+
+            {webhookStatus && (
+              <div className="webhook-status">
+                <h3>Webhook Status</h3>
+                <div className="status-grid">
+                  <div className="status-item">
+                    <span className="status-label">Last Trigger:</span>
+                    <span className="status-value">
+                      {webhookStatus.lastTrigger
+                        ? new Date(webhookStatus.lastTrigger).toLocaleString()
+                        : 'Never'}
+                    </span>
+                  </div>
+                  <div className="status-item">
+                    <span className="status-label">Total Received:</span>
+                    <span className="status-value">{webhookStatus.totalReceived}</span>
+                  </div>
+                  <div className="status-item">
+                    <span className="status-label">Total Processed:</span>
+                    <span className="status-value">{webhookStatus.totalProcessed}</span>
+                  </div>
+                  {webhookStatus.lastError && (
+                    <div className="status-item error">
+                      <span className="status-label">Last Error:</span>
+                      <span className="status-value">{webhookStatus.lastError}</span>
+                    </div>
+                  )}
+                </div>
+
+                {webhookStatus.recentEvents.length > 0 && (
+                  <div className="recent-events">
+                    <h4>Recent Events</h4>
+                    <div className="events-list">
+                      {webhookStatus.recentEvents.map((event, index) => (
+                        <div key={index} className={`event-item ${event.status}`}>
+                          <span className="event-time">
+                            {new Date(event.timestamp).toLocaleTimeString()}
+                          </span>
+                          <span className="event-type">{event.event}</span>
+                          {event.prNumber && (
+                            <span className="event-pr">PR #{event.prNumber}</span>
+                          )}
+                          {event.repository && (
+                            <span className="event-repo">{event.repository}</span>
+                          )}
+                          <span className={`event-status ${event.status}`}>
+                            {event.status === 'received' && '⏳'}
+                            {event.status === 'processed' && '✅'}
+                            {event.status === 'error' && '❌'}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
           </section>
 
           {/* Action Buttons */}

@@ -413,8 +413,18 @@ async function processPRFiles(prData: PRData): Promise<void> {
     // Step 1: Get token for repository owner (try OAuth first, fall back to deployment token)
     const token = getGitHubTokenByUsername(owner);
     if (!token) {
-      console.warn(`No GitHub token available for ${owner} - cannot fetch PR files`);
+      const errorMsg = `No GitHub token available for ${owner}`;
+      console.warn(errorMsg);
       console.warn('Repository owner should authenticate via GitHub OAuth, or set GITHUB_TOKEN in deployment');
+
+      // Update status to error
+      webhookStatus.lastError = `PR #${prData.prNumber}: ${errorMsg}`;
+      const eventIndex = webhookStatus.recentEvents.findIndex(
+        e => e.prNumber === prData.prNumber && e.status === 'received'
+      );
+      if (eventIndex >= 0) {
+        webhookStatus.recentEvents[eventIndex].status = 'error';
+      }
       return;
     }
 
@@ -435,6 +445,15 @@ async function processPRFiles(prData: PRData): Promise<void> {
 
     if (files.length === 0) {
       console.log(`No code files found in PR #${prData.prNumber}`);
+
+      // Update status to processed (successfully checked, just no files to process)
+      webhookStatus.totalProcessed++;
+      const eventIndex = webhookStatus.recentEvents.findIndex(
+        e => e.prNumber === prData.prNumber && e.status === 'received'
+      );
+      if (eventIndex >= 0) {
+        webhookStatus.recentEvents[eventIndex].status = 'processed';
+      }
       return;
     }
 

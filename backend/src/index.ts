@@ -43,7 +43,8 @@ app.use(
   })
 );
 
-// Body parser
+// Body parser - use raw body for webhook routes to verify signature
+app.use('/api/webhook', express.raw({ type: 'application/json' }));
 app.use(express.json());
 
 // Health check endpoint

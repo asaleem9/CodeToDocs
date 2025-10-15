@@ -3,12 +3,12 @@ import axios from 'axios'
 import { showErrorToast, showSuccessToast, showWarningToast, showLoadingToast, dismissToast } from '../utils/errorHandler'
 import './Settings.css'
 
-type ClaudeModel = 'claude-sonnet-4-20250514' | 'claude-3-5-haiku-20241022'
+type ClaudeModel = 'claude-sonnet-4-20250514' | 'claude-haiku-4-5-20251001' | 'claude-3-5-haiku-20241022'
 
 function Settings() {
   const [apiKey, setApiKey] = useState('')
   const [showApiKey, setShowApiKey] = useState(false)
-  const [claudeModel, setClaudeModel] = useState<ClaudeModel>('claude-3-5-haiku-20241022')
+  const [claudeModel, setClaudeModel] = useState<ClaudeModel>('claude-haiku-4-5-20251001')
   const webhookUrl = `${window.location.origin}/api/webhook/github`
 
   // Load settings from localStorage and backend on mount
@@ -141,25 +141,25 @@ function Settings() {
             <p className="section-description">Choose which Claude model to use for documentation generation</p>
 
             <div className="model-options">
-              <label className={`model-option ${claudeModel === 'claude-3-5-haiku-20241022' ? 'active' : ''}`}>
+              <label className={`model-option ${claudeModel === 'claude-haiku-4-5-20251001' ? 'active' : ''}`}>
                 <input
                   type="radio"
                   name="claudeModel"
-                  value="claude-3-5-haiku-20241022"
-                  checked={claudeModel === 'claude-3-5-haiku-20241022'}
+                  value="claude-haiku-4-5-20251001"
+                  checked={claudeModel === 'claude-haiku-4-5-20251001'}
                   onChange={(e) => setClaudeModel(e.target.value as ClaudeModel)}
                 />
                 <div className="model-content">
                   <div className="model-header">
-                    <span className="model-name">Claude 3.5 Haiku</span>
-                    <span className="badge badge-fast">Faster</span>
+                    <span className="model-name">Claude Haiku 4.5</span>
+                    <span className="badge badge-new">New</span>
                     <span className="badge badge-recommended">Recommended</span>
                   </div>
-                  <p className="model-description">Best for quick responses and everyday documentation tasks</p>
+                  <p className="model-description">Sonnet-4-level coding performance at one-third the cost and twice the speed</p>
                   <div className="model-specs">
-                    <span className="spec">⚡ Faster response</span>
-                    <span className="spec">💰 Lower cost</span>
-                    <span className="spec">✨ Great quality</span>
+                    <span className="spec">⚡ 2x faster than Sonnet</span>
+                    <span className="spec">💰 1/3 the cost</span>
+                    <span className="spec">🚀 Frontier performance</span>
                   </div>
                 </div>
               </label>
@@ -177,11 +177,33 @@ function Settings() {
                     <span className="model-name">Claude Sonnet 4.5</span>
                     <span className="badge badge-advanced">Advanced</span>
                   </div>
-                  <p className="model-description">Maximum intelligence for complex codebases and advanced analysis</p>
+                  <p className="model-description">Maximum intelligence for the most complex codebases</p>
                   <div className="model-specs">
                     <span className="spec">🧠 Highest intelligence</span>
                     <span className="spec">📊 Complex analysis</span>
-                    <span className="spec">⏱️ Slower response</span>
+                    <span className="spec">💵 Higher cost</span>
+                  </div>
+                </div>
+              </label>
+
+              <label className={`model-option ${claudeModel === 'claude-3-5-haiku-20241022' ? 'active' : ''}`}>
+                <input
+                  type="radio"
+                  name="claudeModel"
+                  value="claude-3-5-haiku-20241022"
+                  checked={claudeModel === 'claude-3-5-haiku-20241022'}
+                  onChange={(e) => setClaudeModel(e.target.value as ClaudeModel)}
+                />
+                <div className="model-content">
+                  <div className="model-header">
+                    <span className="model-name">Claude 3.5 Haiku</span>
+                    <span className="badge badge-legacy">Legacy</span>
+                  </div>
+                  <p className="model-description">Previous generation model for basic documentation tasks</p>
+                  <div className="model-specs">
+                    <span className="spec">⚡ Fast response</span>
+                    <span className="spec">💰 Low cost</span>
+                    <span className="spec">✨ Good quality</span>
                   </div>
                 </div>
               </label>

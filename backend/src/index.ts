@@ -7,7 +7,6 @@ import documentationRoutes from './routes/documentation';
 import webhookRoutes from './routes/webhook';
 import batchRoutes from './routes/batch';
 import integrationsRoutes from './routes/integrations';
-import qaRoutes from './routes/qa';
 import authRoutes from './routes/auth';
 import settingsRoutes from './routes/settings';
 
@@ -67,9 +66,6 @@ app.use('/api/batch', batchRoutes);
 
 // Integrations routes
 app.use('/api/integrations', integrationsRoutes);
-
-// Q&A routes
-app.use('/api/qa', qaRoutes);
 
 // Auth routes
 app.use('/api/auth', authRoutes);

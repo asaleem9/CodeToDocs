@@ -27,35 +27,46 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const checkAuth = async () => {
     try {
-      const response = await axios.get('/api/auth/user', {
-        withCredentials: true,
-      })
+      // First check localStorage for GitHub OAuth token
+      const storedUser = localStorage.getItem('github_user')
+      const storedToken = localStorage.getItem('github_token')
 
-      if (response.data.authenticated && response.data.user) {
-        setUser(response.data.user)
-        localStorage.setItem('github_user', JSON.stringify(response.data.user))
+      if (storedUser && storedToken) {
+        // We have a GitHub token, use it
+        setUser(JSON.parse(storedUser))
+        setIsLoading(false)
+        return
+      }
+
+      // Fallback: check session-based auth from backend
+      // Note: This will fail for localStorage-based auth, which is expected
+      try {
+        const response = await axios.get('/api/auth/user', {
+          withCredentials: true,
+          // Don't trigger error interceptors for this expected failure
+          validateStatus: (status) => status < 500, // Accept any status < 500
+        })
+
+        if (response.status === 200 && response.data.authenticated && response.data.user) {
+          setUser(response.data.user)
+          localStorage.setItem('github_user', JSON.stringify(response.data.user))
+        }
+      } catch (sessionError) {
+        // Session auth failed - this is normal for localStorage-based auth
+        // Just log it and continue
+        console.log('[AuthContext] Session-based auth not available (expected for localStorage auth)')
       }
     } catch (error) {
-      // Not authenticated
+      // Not authenticated via either method
       setUser(null)
       localStorage.removeItem('github_user')
+      localStorage.removeItem('github_token')
     } finally {
       setIsLoading(false)
     }
   }
 
   useEffect(() => {
-    // Check localStorage first for faster UI
-    const storedUser = localStorage.getItem('github_user')
-    if (storedUser) {
-      try {
-        setUser(JSON.parse(storedUser))
-      } catch (e) {
-        localStorage.removeItem('github_user')
-      }
-    }
-
-    // Then verify with backend
     checkAuth()
   }, [])
 
@@ -70,7 +81,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         withCredentials: true,
       })
       setUser(null)
+      // Clear all GitHub-related localStorage items
       localStorage.removeItem('github_user')
+      localStorage.removeItem('github_token')
+      localStorage.removeItem('github_user_id')
+      localStorage.removeItem('github_username')
+      localStorage.removeItem('github_avatar')
     } catch (error) {
       console.error('Error logging out:', error)
     }

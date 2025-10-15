@@ -75,6 +75,8 @@ export function BatchProvider({ children }: { children: ReactNode }) {
         options: {
           maxFiles,
         }
+      }, {
+        withCredentials: true
       })
 
       setBatchId(response.data.batchId)

@@ -7,7 +7,7 @@ import mermaid from 'mermaid'
 import QualityScore from '../components/QualityScore'
 import { demoSamples } from '../data/demoSamples'
 import { downloadAsMarkdown, downloadAsHTML, copyAsMarkdown, copyAsHTML } from '../utils/exportUtils'
-import { showErrorToast, showSuccessToast, showLoadingToast, dismissToast } from '../utils/errorHandler'
+import { showErrorToast, showSuccessToast } from '../utils/errorHandler'
 
 interface QualityScoreData {
   score: number
@@ -94,7 +94,9 @@ function Home() {
   const startProgressPolling = (jobId: string) => {
     progressIntervalRef.current = window.setInterval(async () => {
       try {
-        const progressResponse = await axios.get(`/api/generate/progress/${jobId}`)
+        const progressResponse = await axios.get(`/api/generate/progress/${jobId}`, {
+          withCredentials: true
+        })
 
         setProgress(progressResponse.data.progress.percentage)
         setProgressStatus(progressResponse.data.progress.status)
@@ -116,7 +118,9 @@ function Home() {
           }
 
           // Fetch the result
-          const resultResponse = await axios.get(`/api/generate/result/${jobId}`)
+          const resultResponse = await axios.get(`/api/generate/result/${jobId}`, {
+            withCredentials: true
+          })
           setDocumentation(resultResponse.data.documentation)
           if (resultResponse.data.diagram) {
             setDiagram(resultResponse.data.diagram)
@@ -167,6 +171,8 @@ function Home() {
       const response = await axios.post('/api/generate', {
         code,
         language
+      }, {
+        withCredentials: true
       })
 
       const jobId = response.data.jobId

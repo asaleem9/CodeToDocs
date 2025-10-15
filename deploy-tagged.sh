@@ -53,25 +53,36 @@ gcloud services enable cloudbuild.googleapis.com \
 
 echo -e "${GREEN}✓ APIs verified${NC}\n"
 
-# Get Anthropic API Key
+# Get secrets
 echo -e "${YELLOW}Step 2: Setting up secrets${NC}"
 read -sp "Enter your Anthropic API Key: " ANTHROPIC_KEY
 echo
+read -p "Enter your GitHub OAuth Client ID: " GITHUB_CLIENT_ID
+read -sp "Enter your GitHub OAuth Client Secret: " GITHUB_CLIENT_SECRET
+echo
+read -sp "Enter your Session Secret (press Enter to generate random): " SESSION_SECRET
+echo
 
 if [ -z "$ANTHROPIC_KEY" ]; then
-    echo -e "${RED}Error: API key is required${NC}"
+    echo -e "${RED}Error: Anthropic API key is required${NC}"
     exit 1
 fi
 
-# Create or update secret with labels
+# Generate session secret if not provided
+if [ -z "$SESSION_SECRET" ]; then
+    SESSION_SECRET=$(openssl rand -hex 32)
+    echo -e "${YELLOW}Generated session secret${NC}"
+fi
+
+# Create or update Anthropic API key secret with labels
 SECRET_NAME="codetodocs-anthropic-api-key"
 if gcloud secrets describe $SECRET_NAME --project=$PROJECT_ID &> /dev/null; then
-    echo -e "${YELLOW}Updating existing secret...${NC}"
+    echo -e "${YELLOW}Updating Anthropic API key secret...${NC}"
     echo -n "$ANTHROPIC_KEY" | gcloud secrets versions add $SECRET_NAME --data-file=- --project=$PROJECT_ID
     # Update labels on existing secret
     gcloud secrets update $SECRET_NAME --update-labels="${TAG_KEY}=${TAG_VALUE}" --project=$PROJECT_ID
 else
-    echo -e "${YELLOW}Creating new secret with label...${NC}"
+    echo -e "${YELLOW}Creating Anthropic API key secret with label...${NC}"
     echo -n "$ANTHROPIC_KEY" | gcloud secrets create $SECRET_NAME \
       --data-file=- \
       --replication-policy="automatic" \
@@ -79,14 +90,61 @@ else
       --project=$PROJECT_ID
 fi
 
-# Grant access to secret
-PROJECT_NUMBER=$(gcloud projects describe $PROJECT_ID --format='value(projectNumber)')
-gcloud secrets add-iam-policy-binding $SECRET_NAME \
-  --member="serviceAccount:${PROJECT_NUMBER}-compute@developer.gserviceaccount.com" \
-  --role="roles/secretmanager.secretAccessor" \
-  --project=$PROJECT_ID &> /dev/null || true
+# Create or update GitHub Client ID secret
+GITHUB_CLIENT_ID_SECRET="codetodocs-github-client-id"
+if gcloud secrets describe $GITHUB_CLIENT_ID_SECRET --project=$PROJECT_ID &> /dev/null; then
+    echo -e "${YELLOW}Updating GitHub Client ID secret...${NC}"
+    echo -n "$GITHUB_CLIENT_ID" | gcloud secrets versions add $GITHUB_CLIENT_ID_SECRET --data-file=- --project=$PROJECT_ID
+    gcloud secrets update $GITHUB_CLIENT_ID_SECRET --update-labels="${TAG_KEY}=${TAG_VALUE}" --project=$PROJECT_ID
+else
+    echo -e "${YELLOW}Creating GitHub Client ID secret with label...${NC}"
+    echo -n "$GITHUB_CLIENT_ID" | gcloud secrets create $GITHUB_CLIENT_ID_SECRET \
+      --data-file=- \
+      --replication-policy="automatic" \
+      --labels="${TAG_KEY}=${TAG_VALUE}" \
+      --project=$PROJECT_ID
+fi
 
-echo -e "${GREEN}✓ Secret configured with label: ${TAG_KEY}=${TAG_VALUE}${NC}\n"
+# Create or update GitHub Client Secret secret
+GITHUB_CLIENT_SECRET_SECRET="codetodocs-github-client-secret"
+if gcloud secrets describe $GITHUB_CLIENT_SECRET_SECRET --project=$PROJECT_ID &> /dev/null; then
+    echo -e "${YELLOW}Updating GitHub Client Secret secret...${NC}"
+    echo -n "$GITHUB_CLIENT_SECRET" | gcloud secrets versions add $GITHUB_CLIENT_SECRET_SECRET --data-file=- --project=$PROJECT_ID
+    gcloud secrets update $GITHUB_CLIENT_SECRET_SECRET --update-labels="${TAG_KEY}=${TAG_VALUE}" --project=$PROJECT_ID
+else
+    echo -e "${YELLOW}Creating GitHub Client Secret secret with label...${NC}"
+    echo -n "$GITHUB_CLIENT_SECRET" | gcloud secrets create $GITHUB_CLIENT_SECRET_SECRET \
+      --data-file=- \
+      --replication-policy="automatic" \
+      --labels="${TAG_KEY}=${TAG_VALUE}" \
+      --project=$PROJECT_ID
+fi
+
+# Create or update Session Secret secret
+SESSION_SECRET_NAME="codetodocs-session-secret"
+if gcloud secrets describe $SESSION_SECRET_NAME --project=$PROJECT_ID &> /dev/null; then
+    echo -e "${YELLOW}Updating Session Secret secret...${NC}"
+    echo -n "$SESSION_SECRET" | gcloud secrets versions add $SESSION_SECRET_NAME --data-file=- --project=$PROJECT_ID
+    gcloud secrets update $SESSION_SECRET_NAME --update-labels="${TAG_KEY}=${TAG_VALUE}" --project=$PROJECT_ID
+else
+    echo -e "${YELLOW}Creating Session Secret secret with label...${NC}"
+    echo -n "$SESSION_SECRET" | gcloud secrets create $SESSION_SECRET_NAME \
+      --data-file=- \
+      --replication-policy="automatic" \
+      --labels="${TAG_KEY}=${TAG_VALUE}" \
+      --project=$PROJECT_ID
+fi
+
+# Grant access to secrets
+PROJECT_NUMBER=$(gcloud projects describe $PROJECT_ID --format='value(projectNumber)')
+for secret in $SECRET_NAME $GITHUB_CLIENT_ID_SECRET $GITHUB_CLIENT_SECRET_SECRET $SESSION_SECRET_NAME; do
+    gcloud secrets add-iam-policy-binding $secret \
+      --member="serviceAccount:${PROJECT_NUMBER}-compute@developer.gserviceaccount.com" \
+      --role="roles/secretmanager.secretAccessor" \
+      --project=$PROJECT_ID &> /dev/null || true
+done
+
+echo -e "${GREEN}✓ All secrets configured with label: ${TAG_KEY}=${TAG_VALUE}${NC}\n"
 
 # Deploy Backend
 echo -e "${YELLOW}Step 3: Deploying backend to Cloud Run${NC}"
@@ -100,7 +158,7 @@ gcloud run deploy codetodocs-backend \
   --platform managed \
   --allow-unauthenticated \
   --set-env-vars "NODE_ENV=production" \
-  --set-secrets "ANTHROPIC_API_KEY=${SECRET_NAME}:latest" \
+  --set-secrets "ANTHROPIC_API_KEY=${SECRET_NAME}:latest,GITHUB_CLIENT_ID=${GITHUB_CLIENT_ID_SECRET}:latest,GITHUB_CLIENT_SECRET=${GITHUB_CLIENT_SECRET_SECRET}:latest,SESSION_SECRET=${SESSION_SECRET_NAME}:latest" \
   --update-labels="${TAG_KEY}=${TAG_VALUE}" \
   --memory 1Gi \
   --cpu 1 \
@@ -176,5 +234,8 @@ echo -e "\n${YELLOW}To delete all tagged resources:${NC}"
 echo "  gcloud run services delete codetodocs-backend --region $REGION --project $PROJECT_ID"
 echo "  gcloud run services delete codetodocs-frontend --region $REGION --project $PROJECT_ID"
 echo "  gcloud secrets delete $SECRET_NAME --project $PROJECT_ID"
+echo "  gcloud secrets delete $GITHUB_CLIENT_ID_SECRET --project $PROJECT_ID"
+echo "  gcloud secrets delete $GITHUB_CLIENT_SECRET_SECRET --project $PROJECT_ID"
+echo "  gcloud secrets delete $SESSION_SECRET_NAME --project $PROJECT_ID"
 
 echo -e "\n${BLUE}🎉 All resources tagged with: ${TAG_KEY}=${TAG_VALUE}${NC}"

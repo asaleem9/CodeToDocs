@@ -45,7 +45,7 @@ interface StoredDoc {
   qualityScore?: QualityScoreData
   code: string
   language: string
-  generatedAt: string
+  createdAt: string // Backend uses createdAt, not generatedAt
   type?: 'single' | 'batch'
   batchInfo?: {
     repoUrl: string
@@ -67,11 +67,12 @@ function History() {
   const [isLoading, setIsLoading] = useState(true)
   const [stats, setStats] = useState<any>(null)
   const [isDiagramCollapsed, setIsDiagramCollapsed] = useState<boolean>(false)
+  const [activeTab, setActiveTab] = useState<'my-docs' | 'public'>('my-docs')
   const diagramRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     fetchHistory()
-  }, [])
+  }, [activeTab])
 
   // Render diagram when selected doc changes
   useEffect(() => {
@@ -110,9 +111,12 @@ function History() {
   const fetchHistory = async () => {
     setIsLoading(true)
     try {
-      const response = await axios.get('/api/documentation')
+      const url = activeTab === 'public' ? '/api/documentation?view=public' : '/api/documentation'
+      const response = await axios.get(url, { withCredentials: true })
       setDocs(response.data.documentation || [])
       setStats(response.data.stats)
+      // Reset selected doc when switching tabs
+      setSelectedDoc(null)
     } catch (error) {
       showErrorToast(error)
     } finally {
@@ -132,7 +136,7 @@ function History() {
     }
 
     try {
-      await axios.delete(`/api/documentation/${id}`)
+      await axios.delete(`/api/documentation/${id}`, { withCredentials: true })
       setDocs(docs.filter(d => d.id !== id))
       if (selectedDoc?.id === id) {
         setSelectedDoc(null)
@@ -155,7 +159,16 @@ function History() {
   }
 
   const formatDate = (dateString: string) => {
+    if (!dateString) return 'Unknown'
+
     const date = new Date(dateString)
+
+    // Check if date is valid
+    if (isNaN(date.getTime())) {
+      console.warn('Invalid date:', dateString)
+      return 'Invalid date'
+    }
+
     const now = new Date()
     const diffMs = now.getTime() - date.getTime()
     const diffMins = Math.floor(diffMs / 60000)
@@ -208,6 +221,29 @@ function History() {
           )}
         </header>
 
+        {/* Tabs for switching between My Docs and Public Gallery */}
+        <div className="history-tabs">
+          <button
+            className={`tab-button ${activeTab === 'my-docs' ? 'active' : ''}`}
+            onClick={() => setActiveTab('my-docs')}
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2" />
+              <circle cx="12" cy="7" r="4" />
+            </svg>
+            My Documents
+          </button>
+          <button
+            className={`tab-button ${activeTab === 'public' ? 'active' : ''}`}
+            onClick={() => setActiveTab('public')}
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9" />
+            </svg>
+            Public Gallery
+          </button>
+        </div>
+
         <div className="history-content">
           {/* Sidebar List */}
           <aside className="history-sidebar">
@@ -221,8 +257,8 @@ function History() {
                 <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
                   <path d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
-                <p>No documentation history yet</p>
-                <span>Generated documentation will appear here</span>
+                <p>{activeTab === 'public' ? 'No public documents yet' : 'No documentation history yet'}</p>
+                <span>{activeTab === 'public' ? 'Public documents will appear here' : 'Generated documentation will appear here'}</span>
               </div>
             ) : (
               <div className="doc-list">
@@ -239,7 +275,7 @@ function History() {
                       >
                         {doc.language}
                       </span>
-                      <span className="doc-time">{formatDate(doc.generatedAt)}</span>
+                      <span className="doc-time">{formatDate(doc.createdAt)}</span>
                     </div>
 
                     <div className="doc-item-content">
@@ -273,15 +309,17 @@ function History() {
                       )}
                     </div>
 
-                    <button
-                      className="delete-btn"
-                      onClick={(e) => handleDelete(doc.id, e)}
-                      title="Delete"
-                    >
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                        <path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2" />
-                      </svg>
-                    </button>
+                    {activeTab === 'my-docs' && (
+                      <button
+                        className="delete-btn"
+                        onClick={(e) => handleDelete(doc.id, e)}
+                        title="Delete"
+                      >
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2" />
+                        </svg>
+                      </button>
+                    )}
                   </div>
                 ))}
               </div>

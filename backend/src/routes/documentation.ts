@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import { generateDocumentation } from '../services/llmService';
 import { documentationStorage } from '../services/storageService';
 import { QualityScore } from '../services/qualityScoreService';
+import { requireAuth, getUserId, canAccessDocument } from '../middleware/auth';
 
 const router = Router();
 
@@ -38,10 +39,12 @@ const activeJobs = new Map<string, {
 /**
  * POST /api/generate
  * Generates documentation for the provided code (with progress tracking)
+ * Authentication is optional - if authenticated, docs are stored with userId
  */
 router.post('/generate', async (req: Request, res: Response) => {
   try {
     const { code, language } = req.body as GenerateRequest;
+    const userId = getUserId(req) || 0; // Use 0 for anonymous users
 
     // Validate request body
     if (!code || typeof code !== 'string') {
@@ -107,14 +110,17 @@ router.post('/generate', async (req: Request, res: Response) => {
 
         // Store the documentation
         const id = documentationStorage.store(
+          userId,
           result.documentation,
           code,
           language,
           result.diagram,
-          result.qualityScore
+          result.qualityScore,
+          undefined, // prInfo
+          false // isPublic - default to private
         );
 
-        console.log(`Stored documentation: ${id} (total: ${documentationStorage.getAll().length})`);
+        console.log(`Stored documentation: ${id} for user ${userId} (total: ${documentationStorage.getAll().length})`);
 
         // Complete with result
         activeJobs.get(jobId)!.progress = {
@@ -147,6 +153,7 @@ router.post('/generate', async (req: Request, res: Response) => {
 /**
  * GET /api/generate/progress/:jobId
  * Get progress of a documentation generation job
+ * No authentication required - anyone with jobId can check progress
  */
 router.get('/generate/progress/:jobId', (req: Request, res: Response) => {
   const { jobId } = req.params;
@@ -167,6 +174,7 @@ router.get('/generate/progress/:jobId', (req: Request, res: Response) => {
 /**
  * GET /api/generate/result/:jobId
  * Get result of a completed documentation generation job
+ * No authentication required - anyone with jobId can get result
  */
 router.get('/generate/result/:jobId', (req: Request, res: Response) => {
   const { jobId } = req.params;
@@ -198,11 +206,24 @@ router.get('/generate/result/:jobId', (req: Request, res: Response) => {
 
 /**
  * GET /api/documentation
- * Get all stored documentation entries
+ * Get documentation entries for the user (authenticated or anonymous)
+ * If 'view=public' query param is provided, returns all public documents instead
+ * Authentication is optional - anonymous users get userId 0
  */
 router.get('/documentation', (req: Request, res: Response) => {
   try {
-    const docs = documentationStorage.getAll();
+    const userId = getUserId(req) || 0; // Use 0 for anonymous users
+    const view = req.query.view as string;
+
+    let docs;
+    if (view === 'public') {
+      // Get all public documentation
+      docs = documentationStorage.getAllPublic();
+    } else {
+      // Get user's own documentation (including anonymous docs with userId 0)
+      docs = documentationStorage.getAllByUser(userId);
+    }
+
     const stats = documentationStorage.getStats();
 
     return res.status(200).json({
@@ -222,15 +243,27 @@ router.get('/documentation', (req: Request, res: Response) => {
 /**
  * GET /api/documentation/:id
  * Get a specific documentation entry by ID
+ * Access is granted if: document is public OR user owns the document
+ * Authentication is optional - anonymous users get userId 0
  */
 router.get('/documentation/:id', (req: Request, res: Response) => {
   try {
     const { id } = req.params;
+    const userId = getUserId(req) || 0; // Use 0 for anonymous users
     const doc = documentationStorage.get(id);
 
     if (!doc) {
       return res.status(404).json({
         error: 'Documentation not found',
+        timestamp: new Date(),
+      } as ErrorResponse);
+    }
+
+    // Check access: must be owner or document must be public
+    if (!canAccessDocument(doc, userId)) {
+      return res.status(403).json({
+        error: 'Access denied',
+        message: 'You do not have permission to view this documentation',
         timestamp: new Date(),
       } as ErrorResponse);
     }
@@ -248,10 +281,31 @@ router.get('/documentation/:id', (req: Request, res: Response) => {
 /**
  * DELETE /api/documentation/:id
  * Delete a specific documentation entry
+ * Only the owner can delete their own documentation
+ * Authentication is optional - anonymous users get userId 0
  */
 router.delete('/documentation/:id', (req: Request, res: Response) => {
   try {
     const { id } = req.params;
+    const userId = getUserId(req) || 0; // Use 0 for anonymous users
+    const doc = documentationStorage.get(id);
+
+    if (!doc) {
+      return res.status(404).json({
+        error: 'Documentation not found',
+        timestamp: new Date(),
+      } as ErrorResponse);
+    }
+
+    // Check ownership: only owner can delete
+    if (doc.userId !== userId) {
+      return res.status(403).json({
+        error: 'Access denied',
+        message: 'You can only delete your own documentation',
+        timestamp: new Date(),
+      } as ErrorResponse);
+    }
+
     const deleted = documentationStorage.delete(id);
 
     if (!deleted) {

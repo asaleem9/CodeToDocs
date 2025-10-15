@@ -1,11 +1,13 @@
 import express, { Request, Response } from 'express';
 import { processRepository, BatchProgress, generateFullRepoDocumentation } from '../utils/batchProcessor';
 import { documentationStorage } from '../services/storageService';
+import { requireAuth, getUserId } from '../middleware/auth';
 
 const router = express.Router();
 
-// Store active batch jobs
+// Store active batch jobs with user ID
 const activeBatches = new Map<string, {
+  userId: number;
   progress: BatchProgress;
   result?: any;
   error?: string;
@@ -14,10 +16,12 @@ const activeBatches = new Map<string, {
 /**
  * POST /api/batch/start
  * Start batch processing of a repository
+ * Authentication is optional - if authenticated, docs are stored with userId
  */
 router.post('/start', async (req: Request, res: Response) => {
   try {
     const { repoUrl, options } = req.body;
+    const userId = getUserId(req) || 0; // Use 0 for anonymous users
 
     if (!repoUrl) {
       return res.status(400).json({ error: 'Repository URL is required' });
@@ -35,6 +39,7 @@ router.post('/start', async (req: Request, res: Response) => {
 
     // Initialize batch tracking
     activeBatches.set(batchId, {
+      userId,
       progress: {
         total: 0,
         completed: 0,
@@ -72,11 +77,13 @@ router.post('/start', async (req: Request, res: Response) => {
           if (result.fullRepoDocumentation) {
             try {
               documentationStorage.storeBatch(
+                userId,
                 result.fullRepoDocumentation,
                 result.repoUrl,
                 result.totalFiles,
                 result.successCount,
-                result.failedCount
+                result.failedCount,
+                false // isPublic - default to private
               );
             } catch (error) {
               console.error('Error storing batch in history:', error);
@@ -99,6 +106,7 @@ router.post('/start', async (req: Request, res: Response) => {
 /**
  * GET /api/batch/progress/:batchId
  * Get progress of a batch job
+ * No authentication required - anyone with batchId can check progress
  */
 router.get('/progress/:batchId', (req: Request, res: Response) => {
   const { batchId } = req.params;
@@ -119,6 +127,7 @@ router.get('/progress/:batchId', (req: Request, res: Response) => {
 /**
  * GET /api/batch/result/:batchId
  * Get result of a completed batch job
+ * No authentication required - anyone with batchId can get result
  */
 router.get('/result/:batchId', (req: Request, res: Response) => {
   const { batchId } = req.params;

@@ -15,12 +15,15 @@ router.get('/github', (req: Request, res: Response) => {
     return res.status(500).json({ error: 'GitHub OAuth not configured' });
   }
 
-  const redirectUri = `${req.protocol}://${req.get('host')}/api/auth/github/callback`;
+  // Use x-forwarded-proto header if available (for proxies like Cloud Run)
+  const protocol = req.get('x-forwarded-proto') || req.protocol;
+  const redirectUri = `${protocol}://${req.get('host')}/api/auth/github/callback`;
   const scope = 'user:email repo';
 
+  // Add prompt=select_account to force GitHub to show account selection
   const githubAuthUrl = `https://github.com/login/oauth/authorize?client_id=${clientId}&redirect_uri=${encodeURIComponent(
     redirectUri
-  )}&scope=${encodeURIComponent(scope)}`;
+  )}&scope=${encodeURIComponent(scope)}&prompt=select_account`;
 
   res.redirect(githubAuthUrl);
 });
@@ -49,7 +52,7 @@ router.get('/github/callback', async (req: Request, res: Response) => {
     // Get user information
     const user = await getGitHubUser(accessToken);
 
-    // Store user session
+    // Store user session (still useful for backend tracking)
     if (req.session) {
       req.session.user = {
         id: user.id,
@@ -62,8 +65,19 @@ router.get('/github/callback', async (req: Request, res: Response) => {
       req.session.accessToken = accessToken;
     }
 
-    // Redirect to frontend with success
-    res.redirect(`${frontendUrl}/app/github?auth=success`);
+    // Encode user data and token to pass to frontend
+    const userData = encodeURIComponent(JSON.stringify({
+      id: user.id,
+      login: user.login,
+      name: user.name,
+      email: user.email,
+      avatar_url: user.avatar_url,
+      html_url: user.html_url,
+    }));
+    const encodedToken = encodeURIComponent(accessToken);
+
+    // Redirect to frontend with success and user data
+    res.redirect(`${frontendUrl}/app/github?auth=success&user=${userData}&token=${encodedToken}`);
   } catch (error: any) {
     console.error('Error during GitHub OAuth callback:', error);
     res.redirect(`${frontendUrl}/app/github?error=auth_failed`);

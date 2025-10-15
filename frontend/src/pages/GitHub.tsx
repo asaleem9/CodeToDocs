@@ -1,6 +1,7 @@
-import { useState, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useState, useEffect, useRef } from 'react'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import axios from 'axios'
+import { useAuth } from '../contexts/AuthContext'
 import { showErrorToast, showSuccessToast } from '../utils/errorHandler'
 import './GitHub.css'
 
@@ -24,22 +25,96 @@ function GitHub() {
   const [repositories, setRepositories] = useState<GitHubRepository[]>([])
   const [isLoading, setIsLoading] = useState(false)
   const [showTokenInput, setShowTokenInput] = useState(true)
+  const hasFetchedRepos = useRef(false)
+  const isFetchingRepos = useRef(false)
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
+  const { user, isAuthenticated } = useAuth()
+
+  // Check for OAuth success callback and store token
+  useEffect(() => {
+    const authSuccess = searchParams.get('auth')
+    const userParam = searchParams.get('user')
+    const tokenParam = searchParams.get('token')
+
+    if (authSuccess === 'success' && userParam && tokenParam) {
+      try {
+        console.log('[GitHub] OAuth success detected, storing token and user data')
+
+        // Decode and parse user data
+        const user = JSON.parse(decodeURIComponent(userParam))
+        const token = decodeURIComponent(tokenParam)
+
+        // Store in localStorage for persistent access
+        localStorage.setItem('github_token', token)
+        localStorage.setItem('github_username', user.login)
+        localStorage.setItem('github_avatar', user.avatar_url)
+        localStorage.setItem('github_user', JSON.stringify(user))
+        localStorage.setItem('github_user_id', user.id.toString()) // Store numeric GitHub user ID
+
+        showSuccessToast(`Successfully logged in as @${user.login}!`)
+
+        // Update local state
+        setGithubToken(token)
+        setUsername(user.login)
+        setAvatarUrl(user.avatar_url)
+        setShowTokenInput(false)
+
+        // Fetch repositories with the token
+        fetchRepositories(token)
+
+        // Note: No need to call checkAuth() - AuthContext will automatically
+        // pick up the localStorage values on next render
+
+        // Clean up URL
+        navigate('/app/github', { replace: true })
+      } catch (error) {
+        console.error('[GitHub] Error processing OAuth callback:', error)
+        showErrorToast({
+          response: {
+            data: { error: 'Failed to process OAuth response' }
+          }
+        })
+      }
+    }
+  }, [searchParams, navigate])
 
   useEffect(() => {
-    // Check localStorage for saved token
+    console.log('[GitHub] Auth state:', { isAuthenticated, user, hasFetchedRepos: hasFetchedRepos.current })
+
+    // Check localStorage for token first
     const savedToken = localStorage.getItem('github_token')
     const savedUsername = localStorage.getItem('github_username')
     const savedAvatar = localStorage.getItem('github_avatar')
 
+    console.log('[GitHub] Checking localStorage:', { hasToken: !!savedToken, username: savedUsername })
+
+    // If we have a token in localStorage, use direct GitHub API
     if (savedToken && savedUsername) {
       setGithubToken(savedToken)
       setUsername(savedUsername)
       setAvatarUrl(savedAvatar || '')
       setShowTokenInput(false)
-      fetchRepositories(savedToken)
+      // Only fetch if we haven't fetched before
+      if (!hasFetchedRepos.current) {
+        console.log('[GitHub] Fetching repos with localStorage token')
+        fetchRepositories(savedToken)
+        hasFetchedRepos.current = true
+      }
+      return
     }
-  }, [])
+
+    // Only try session-based auth if no localStorage token exists
+    if (isAuthenticated && user && !savedToken && !hasFetchedRepos.current) {
+      console.log('[GitHub] User is authenticated via OAuth, fetching repositories from session')
+      // Fetch repositories using the OAuth token stored in the session
+      fetchRepositoriesFromSession()
+      setUsername(user.login)
+      setAvatarUrl(user.avatar_url)
+      setShowTokenInput(false)
+      hasFetchedRepos.current = true
+    }
+  }, [isAuthenticated, user])
 
   const handleConnect = async () => {
     if (!githubToken.trim()) {
@@ -95,10 +170,39 @@ function GitHub() {
     setAvatarUrl('')
     setShowTokenInput(true)
     setRepositories([])
+    hasFetchedRepos.current = false
     showSuccessToast('Disconnected from GitHub')
   }
 
+  const fetchRepositoriesFromSession = async () => {
+    setIsLoading(true)
+    try {
+      // Use the backend endpoint that uses the session token
+      const response = await axios.get('/api/auth/repositories', {
+        withCredentials: true,
+        params: {
+          per_page: 100,
+        },
+      })
+      setRepositories(response.data.repositories)
+    } catch (error: any) {
+      // Silently fail - this is expected for localStorage-based auth
+      // The user is already authenticated via localStorage token
+      console.log('[GitHub] Session-based auth failed (expected for localStorage auth)', error)
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
   const fetchRepositories = async (token: string) => {
+    // Prevent concurrent fetches
+    if (isFetchingRepos.current) {
+      console.log('[GitHub] fetchRepositories already in progress, skipping...')
+      return
+    }
+
+    console.log('[GitHub] fetchRepositories called with token:', token.substring(0, 10) + '...')
+    isFetchingRepos.current = true
     setIsLoading(true)
     try {
       const response = await axios.get('https://api.github.com/user/repos', {
@@ -112,11 +216,14 @@ function GitHub() {
           affiliation: 'owner,collaborator',
         },
       })
+      console.log('[GitHub] Successfully fetched', response.data.length, 'repositories')
       setRepositories(response.data)
     } catch (error: any) {
+      console.error('[GitHub] Error fetching repositories:', error)
       showErrorToast(error)
     } finally {
       setIsLoading(false)
+      isFetchingRepos.current = false
     }
   }
 

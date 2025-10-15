@@ -274,8 +274,9 @@ async function processPRFiles(prData: PRData): Promise<void> {
       const result = await generateDocumentation(content, language);
 
       if (result.success) {
-        // Store documentation with PR info
+        // Store documentation with PR info (using userId 0 for webhook/PR-based docs)
         const docId = documentationStorage.store(
+          0, // userId - use 0 for anonymous/webhook-generated docs
           result.documentation,
           content,
           language,
@@ -286,7 +287,8 @@ async function processPRFiles(prData: PRData): Promise<void> {
             repository: prData.repository,
             branch: prData.branch,
             author: prData.author,
-          }
+          },
+          false // isPublic - default to private
         );
 
         console.log(`✓ Documentation generated for ${file.filename} (ID: ${docId})`);

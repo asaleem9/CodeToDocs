@@ -50,27 +50,67 @@ gcloud services enable cloudbuild.googleapis.com \
 
 echo -e "${GREEN}✓ APIs enabled${NC}\n"
 
-# Get Anthropic API Key
+# Get secrets
 echo -e "${YELLOW}Step 3: Setting up secrets${NC}"
 read -sp "Enter your Anthropic API Key: " ANTHROPIC_KEY
 echo
+read -p "Enter your GitHub OAuth Client ID: " GITHUB_CLIENT_ID
+read -sp "Enter your GitHub OAuth Client Secret: " GITHUB_CLIENT_SECRET
+echo
+read -sp "Enter your Session Secret (press Enter to generate random): " SESSION_SECRET
+echo
 
-# Create or update secret
+# Generate session secret if not provided
+if [ -z "$SESSION_SECRET" ]; then
+    SESSION_SECRET=$(openssl rand -hex 32)
+    echo -e "${YELLOW}Generated session secret${NC}"
+fi
+
+# Create or update Anthropic API key secret
 if gcloud secrets describe anthropic-api-key &> /dev/null; then
-    echo -e "${YELLOW}Updating existing secret...${NC}"
+    echo -e "${YELLOW}Updating Anthropic API key secret...${NC}"
     echo -n "$ANTHROPIC_KEY" | gcloud secrets versions add anthropic-api-key --data-file=-
 else
-    echo -e "${YELLOW}Creating new secret...${NC}"
+    echo -e "${YELLOW}Creating Anthropic API key secret...${NC}"
     echo -n "$ANTHROPIC_KEY" | gcloud secrets create anthropic-api-key --data-file=- --replication-policy="automatic"
 fi
 
-# Grant access to secret
-PROJECT_NUMBER=$(gcloud projects describe $PROJECT_ID --format='value(projectNumber)')
-gcloud secrets add-iam-policy-binding anthropic-api-key \
-  --member="serviceAccount:${PROJECT_NUMBER}-compute@developer.gserviceaccount.com" \
-  --role="roles/secretmanager.secretAccessor" &> /dev/null || true
+# Create or update GitHub Client ID secret
+if gcloud secrets describe github-client-id &> /dev/null; then
+    echo -e "${YELLOW}Updating GitHub Client ID secret...${NC}"
+    echo -n "$GITHUB_CLIENT_ID" | gcloud secrets versions add github-client-id --data-file=-
+else
+    echo -e "${YELLOW}Creating GitHub Client ID secret...${NC}"
+    echo -n "$GITHUB_CLIENT_ID" | gcloud secrets create github-client-id --data-file=- --replication-policy="automatic"
+fi
 
-echo -e "${GREEN}✓ Secret configured${NC}\n"
+# Create or update GitHub Client Secret secret
+if gcloud secrets describe github-client-secret &> /dev/null; then
+    echo -e "${YELLOW}Updating GitHub Client Secret secret...${NC}"
+    echo -n "$GITHUB_CLIENT_SECRET" | gcloud secrets versions add github-client-secret --data-file=-
+else
+    echo -e "${YELLOW}Creating GitHub Client Secret secret...${NC}"
+    echo -n "$GITHUB_CLIENT_SECRET" | gcloud secrets create github-client-secret --data-file=- --replication-policy="automatic"
+fi
+
+# Create or update Session Secret secret
+if gcloud secrets describe session-secret &> /dev/null; then
+    echo -e "${YELLOW}Updating Session Secret secret...${NC}"
+    echo -n "$SESSION_SECRET" | gcloud secrets versions add session-secret --data-file=-
+else
+    echo -e "${YELLOW}Creating Session Secret secret...${NC}"
+    echo -n "$SESSION_SECRET" | gcloud secrets create session-secret --data-file=- --replication-policy="automatic"
+fi
+
+# Grant access to secrets
+PROJECT_NUMBER=$(gcloud projects describe $PROJECT_ID --format='value(projectNumber)')
+for secret in anthropic-api-key github-client-id github-client-secret session-secret; do
+    gcloud secrets add-iam-policy-binding $secret \
+      --member="serviceAccount:${PROJECT_NUMBER}-compute@developer.gserviceaccount.com" \
+      --role="roles/secretmanager.secretAccessor" &> /dev/null || true
+done
+
+echo -e "${GREEN}✓ All secrets configured${NC}\n"
 
 # Deploy Backend
 echo -e "${YELLOW}Step 4: Deploying backend to Cloud Run${NC}"
@@ -83,8 +123,8 @@ gcloud run deploy codetodocs-backend \
   --region $REGION \
   --platform managed \
   --allow-unauthenticated \
-  --set-env-vars "NODE_ENV=production" \
-  --set-secrets "ANTHROPIC_API_KEY=anthropic-api-key:latest" \
+  --set-env-vars "NODE_ENV=production,PORT=8080" \
+  --set-secrets "ANTHROPIC_API_KEY=anthropic-api-key:latest,GITHUB_CLIENT_ID=github-client-id:latest,GITHUB_CLIENT_SECRET=github-client-secret:latest,SESSION_SECRET=session-secret:latest" \
   --memory 1Gi \
   --cpu 1 \
   --max-instances 10 \
@@ -146,5 +186,8 @@ echo -e "\n${YELLOW}To delete all resources:${NC}"
 echo "  gcloud run services delete codetodocs-backend --region $REGION"
 echo "  gcloud run services delete codetodocs-frontend --region $REGION"
 echo "  gcloud secrets delete anthropic-api-key"
+echo "  gcloud secrets delete github-client-id"
+echo "  gcloud secrets delete github-client-secret"
+echo "  gcloud secrets delete session-secret"
 
 echo -e "\n${BLUE}Enjoy using CodeToDocsAI!${NC}"

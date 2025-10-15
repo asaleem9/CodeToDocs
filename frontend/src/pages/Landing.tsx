@@ -14,8 +14,8 @@ function Landing() {
             Transform Your Code into Beautiful Documentation
           </h1>
           <p className="hero-description">
-            AI-powered documentation generator using Claude 3.5 Sonnet.
-            Generate comprehensive, high-quality documentation for your codebase in seconds.
+            AI-powered documentation generator for your codebase.
+            Generate comprehensive, high-quality documentation in seconds.
           </p>
           <div className="hero-actions">
             <Link to="/app" className="btn btn-primary">
@@ -84,7 +84,7 @@ function Landing() {
               </div>
               <h3>AI-Powered Analysis</h3>
               <p>
-                Leverages Claude 3.5 Sonnet to deeply understand your code structure,
+                Leverages advanced AI models to deeply understand your code structure,
                 patterns, and logic to generate accurate documentation.
               </p>
             </div>
@@ -429,9 +429,9 @@ function Landing() {
           </div>
           <div className="footer-section">
             <h4>Technology</h4>
-            <a href="https://www.anthropic.com/claude" target="_blank" rel="noopener noreferrer">Claude AI</a>
             <a href="https://mermaid.js.org/" target="_blank" rel="noopener noreferrer">Mermaid</a>
             <a href="https://react.dev/" target="_blank" rel="noopener noreferrer">React</a>
+            <a href="https://nodejs.org/" target="_blank" rel="noopener noreferrer">Node.js</a>
           </div>
         </div>
         <div className="footer-bottom">

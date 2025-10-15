@@ -93,7 +93,7 @@ export function parseError(error: any): ErrorResponse {
     };
   }
 
-  // Claude API specific errors
+  // AI API specific errors
   if (error.response?.data?.error?.includes('model')) {
     return {
       message: error.response.data.error,

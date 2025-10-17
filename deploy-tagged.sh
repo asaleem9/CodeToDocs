@@ -62,6 +62,10 @@ read -sp "Enter your GitHub OAuth Client Secret: " GITHUB_CLIENT_SECRET
 echo
 read -sp "Enter your Session Secret (press Enter to generate random): " SESSION_SECRET
 echo
+read -sp "Enter your Database Encryption Key (32 chars, press Enter to generate random): " DB_ENCRYPTION_KEY
+echo
+read -p "Enter your Cloud SQL Database URL (or press Enter to skip database): " DATABASE_URL
+echo
 
 if [ -z "$ANTHROPIC_KEY" ]; then
     echo -e "${RED}Error: Anthropic API key is required${NC}"
@@ -72,6 +76,12 @@ fi
 if [ -z "$SESSION_SECRET" ]; then
     SESSION_SECRET=$(openssl rand -hex 32)
     echo -e "${YELLOW}Generated session secret${NC}"
+fi
+
+# Generate database encryption key if not provided
+if [ -z "$DB_ENCRYPTION_KEY" ]; then
+    DB_ENCRYPTION_KEY=$(openssl rand -hex 32)
+    echo -e "${YELLOW}Generated database encryption key${NC}"
 fi
 
 # Create or update Anthropic API key secret with labels
@@ -135,9 +145,46 @@ else
       --project=$PROJECT_ID
 fi
 
+# Create or update Database URL secret (if provided)
+DB_URL_SECRET="codetodocs-database-url"
+DB_ENCRYPTION_SECRET="codetodocs-database-encryption-key"
+
+if [ -n "$DATABASE_URL" ]; then
+    if gcloud secrets describe $DB_URL_SECRET --project=$PROJECT_ID &> /dev/null; then
+        echo -e "${YELLOW}Updating Database URL secret...${NC}"
+        echo -n "$DATABASE_URL" | gcloud secrets versions add $DB_URL_SECRET --data-file=- --project=$PROJECT_ID
+        gcloud secrets update $DB_URL_SECRET --update-labels="${TAG_KEY}=${TAG_VALUE}" --project=$PROJECT_ID
+    else
+        echo -e "${YELLOW}Creating Database URL secret with label...${NC}"
+        echo -n "$DATABASE_URL" | gcloud secrets create $DB_URL_SECRET \
+          --data-file=- \
+          --replication-policy="automatic" \
+          --labels="${TAG_KEY}=${TAG_VALUE}" \
+          --project=$PROJECT_ID
+    fi
+fi
+
+# Create or update Database Encryption Key secret
+if gcloud secrets describe $DB_ENCRYPTION_SECRET --project=$PROJECT_ID &> /dev/null; then
+    echo -e "${YELLOW}Updating Database Encryption Key secret...${NC}"
+    echo -n "$DB_ENCRYPTION_KEY" | gcloud secrets versions add $DB_ENCRYPTION_SECRET --data-file=- --project=$PROJECT_ID
+    gcloud secrets update $DB_ENCRYPTION_SECRET --update-labels="${TAG_KEY}=${TAG_VALUE}" --project=$PROJECT_ID
+else
+    echo -e "${YELLOW}Creating Database Encryption Key secret with label...${NC}"
+    echo -n "$DB_ENCRYPTION_KEY" | gcloud secrets create $DB_ENCRYPTION_SECRET \
+      --data-file=- \
+      --replication-policy="automatic" \
+      --labels="${TAG_KEY}=${TAG_VALUE}" \
+      --project=$PROJECT_ID
+fi
+
 # Grant access to secrets
 PROJECT_NUMBER=$(gcloud projects describe $PROJECT_ID --format='value(projectNumber)')
-SECRETS_LIST="$SECRET_NAME $GITHUB_CLIENT_ID_SECRET $GITHUB_CLIENT_SECRET_SECRET $SESSION_SECRET_NAME"
+SECRETS_LIST="$SECRET_NAME $GITHUB_CLIENT_ID_SECRET $GITHUB_CLIENT_SECRET_SECRET $SESSION_SECRET_NAME $DB_ENCRYPTION_SECRET"
+
+if [ -n "$DATABASE_URL" ]; then
+    SECRETS_LIST="$SECRETS_LIST $DB_URL_SECRET"
+fi
 
 for secret in $SECRETS_LIST; do
     gcloud secrets add-iam-policy-binding $secret \
@@ -155,23 +202,57 @@ echo -e "${BLUE}This may take 5-10 minutes...${NC}"
 cd backend
 
 # Build secrets string
-BACKEND_SECRETS="ANTHROPIC_API_KEY=${SECRET_NAME}:latest,GITHUB_CLIENT_ID=${GITHUB_CLIENT_ID_SECRET}:latest,GITHUB_CLIENT_SECRET=${GITHUB_CLIENT_SECRET_SECRET}:latest,SESSION_SECRET=${SESSION_SECRET_NAME}:latest"
+BACKEND_SECRETS="ANTHROPIC_API_KEY=${SECRET_NAME}:latest,GITHUB_CLIENT_ID=${GITHUB_CLIENT_ID_SECRET}:latest,GITHUB_CLIENT_SECRET=${GITHUB_CLIENT_SECRET_SECRET}:latest,SESSION_SECRET=${SESSION_SECRET_NAME}:latest,DATABASE_ENCRYPTION_KEY=${DB_ENCRYPTION_SECRET}:latest"
 
-gcloud run deploy codetodocs-backend \
-  --source . \
-  --region $REGION \
-  --platform managed \
-  --allow-unauthenticated \
-  --set-env-vars "NODE_ENV=production" \
-  --set-secrets "$BACKEND_SECRETS" \
-  --update-labels="${TAG_KEY}=${TAG_VALUE}" \
-  --memory 1Gi \
-  --cpu 1 \
-  --max-instances 10 \
-  --min-instances 0 \
-  --timeout 300 \
-  --project=$PROJECT_ID \
-  --quiet
+# Add DATABASE_URL to secrets if provided
+CLOUD_SQL_INSTANCE=""
+if [ -n "$DATABASE_URL" ]; then
+    BACKEND_SECRETS="$BACKEND_SECRETS,DATABASE_URL=${DB_URL_SECRET}:latest"
+    echo -e "${GREEN}✓ Database configuration will be included${NC}"
+
+    # Check if Cloud SQL instance exists to add connection
+    DB_INSTANCE="codetodocs-db"
+    if gcloud sql instances describe $DB_INSTANCE --project=$PROJECT_ID &> /dev/null 2>&1; then
+        INSTANCE_CONNECTION_NAME=$(gcloud sql instances describe $DB_INSTANCE --project=$PROJECT_ID --format='value(connectionName)')
+        CLOUD_SQL_INSTANCE="--add-cloudsql-instances=$INSTANCE_CONNECTION_NAME"
+        echo -e "${GREEN}✓ Cloud SQL connection will be configured: $INSTANCE_CONNECTION_NAME${NC}"
+    fi
+fi
+
+if [ -n "$CLOUD_SQL_INSTANCE" ]; then
+    echo "Deploying with Cloud SQL connection..."
+    gcloud run deploy codetodocs-backend \
+      --source . \
+      --region $REGION \
+      --platform managed \
+      --allow-unauthenticated \
+      --set-env-vars "NODE_ENV=production" \
+      --set-secrets "$BACKEND_SECRETS" \
+      --update-labels="${TAG_KEY}=${TAG_VALUE}" \
+      --memory 1Gi \
+      --cpu 1 \
+      --max-instances 10 \
+      --min-instances 0 \
+      --timeout 300 \
+      $CLOUD_SQL_INSTANCE \
+      --project=$PROJECT_ID
+else
+    echo "Deploying without Cloud SQL connection..."
+    gcloud run deploy codetodocs-backend \
+      --source . \
+      --region $REGION \
+      --platform managed \
+      --allow-unauthenticated \
+      --set-env-vars "NODE_ENV=production" \
+      --set-secrets "$BACKEND_SECRETS" \
+      --update-labels="${TAG_KEY}=${TAG_VALUE}" \
+      --memory 1Gi \
+      --cpu 1 \
+      --max-instances 10 \
+      --min-instances 0 \
+      --timeout 300 \
+      --project=$PROJECT_ID
+fi
 
 BACKEND_URL=$(gcloud run services describe codetodocs-backend --region $REGION --project=$PROJECT_ID --format 'value(status.url)')
 echo -e "${GREEN}✓ Backend deployed at: $BACKEND_URL${NC}"

@@ -53,8 +53,12 @@ router.get('/github/callback', async (req: Request, res: Response) => {
     // Get user information
     const user = await getGitHubUser(accessToken);
 
-    // Store OAuth token for webhook use
-    tokenStorage.store(user.id, accessToken, user.login);
+    // Store OAuth token for webhook use (now with full user info)
+    await tokenStorage.store(user.id, accessToken, user.login, {
+      githubEmail: user.email,
+      avatarUrl: user.avatar_url,
+      name: user.name,
+    });
 
     // Store user session (still useful for backend tracking)
     if (req.session) {
@@ -137,10 +141,10 @@ router.get('/repositories', async (req: Request, res: Response) => {
  * POST /api/auth/logout
  * Logout user and destroy session
  */
-router.post('/logout', (req: Request, res: Response) => {
+router.post('/logout', async (req: Request, res: Response) => {
   // Remove stored OAuth token
   if (req.session?.user?.id) {
-    tokenStorage.remove(req.session.user.id);
+    await tokenStorage.remove(req.session.user.id);
   }
 
   if (req.session) {

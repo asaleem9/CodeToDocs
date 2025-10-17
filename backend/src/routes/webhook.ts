@@ -352,9 +352,9 @@ function detectLanguage(filename: string): string {
  * 1. Try to get user's stored OAuth token (preferred - uses user's permissions)
  * 2. Fall back to deployment token (for public repos or when user hasn't authenticated)
  */
-function getGitHubTokenForUser(userId: number): string | null {
+async function getGitHubTokenForUser(userId: number): Promise<string | null> {
   // First, try to get user's OAuth token
-  const userToken = tokenStorage.get(userId);
+  const userToken = await tokenStorage.get(userId);
 
   if (userToken) {
     console.log(`Using user's OAuth token for userId ${userId}`);
@@ -378,9 +378,9 @@ function getGitHubTokenForUser(userId: number): string | null {
  * Get GitHub token by repository owner username
  * This is used when webhook receives an event - we look up token by username
  */
-function getGitHubTokenByUsername(username: string): string | null {
+async function getGitHubTokenByUsername(username: string): Promise<string | null> {
   // First, try to get user's OAuth token by username
-  const userToken = tokenStorage.getByUsername(username);
+  const userToken = await tokenStorage.getByUsername(username);
 
   if (userToken) {
     console.log(`Using OAuth token for repository owner: ${username}`);
@@ -417,7 +417,7 @@ async function processPRFiles(prData: PRData): Promise<void> {
     let tokenSource: string = '';
 
     // Try PR author's token first
-    token = tokenStorage.getByUsername(prData.author);
+    token = await tokenStorage.getByUsername(prData.author);
     if (token) {
       tokenSource = `PR author (${prData.author})`;
       console.log(`✓ Using OAuth token from ${tokenSource}`);
@@ -425,7 +425,7 @@ async function processPRFiles(prData: PRData): Promise<void> {
 
     // Fall back to repository owner's token
     if (!token && owner !== prData.author) {
-      token = tokenStorage.getByUsername(owner);
+      token = await tokenStorage.getByUsername(owner);
       if (token) {
         tokenSource = `repository owner (${owner})`;
         console.log(`✓ Using OAuth token from ${tokenSource}`);
@@ -520,7 +520,7 @@ async function processPRFiles(prData: PRData): Promise<void> {
 
       if (result.success) {
         // Store documentation with PR info using repository owner's GitHub user ID
-        const docId = documentationStorage.store(
+        const docId = await documentationStorage.store(
           userId, // userId - repository owner's GitHub user ID
           result.documentation,
           content,

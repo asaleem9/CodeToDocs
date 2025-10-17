@@ -1,5 +1,7 @@
 import crypto from 'crypto';
 import { QualityScore } from './qualityScoreService';
+import { storageServiceDb } from './storageServiceDb';
+import { tokenStorageDb } from './tokenStorageDb';
 
 export interface StoredDocumentation {
   id: string;
@@ -12,7 +14,7 @@ export interface StoredDocumentation {
   createdAt: Date; // When document was created
   updatedAt: Date; // When document was last updated
   isPublic: boolean; // Whether document is publicly viewable
-  type?: 'single' | 'batch'; // Type of documentation
+  type?: 'single' | 'batch' | 'pr'; // Type of documentation
   batchInfo?: {
     repoUrl: string;
     totalFiles: number;
@@ -28,8 +30,9 @@ export interface StoredDocumentation {
 }
 
 /**
- * In-memory storage service for documentation
- * Implements LRU cache with max 100 entries per user
+ * Hybrid Database + In-Memory storage service for documentation
+ * - Database: Persistent storage for all documentation
+ * - Memory: LRU cache for fast access (max 100 per user, 200 global)
  */
 class DocumentationStorage {
   private storage: Map<string, StoredDocumentation>;
@@ -55,7 +58,7 @@ class DocumentationStorage {
    * Store a documentation entry
    * Returns the generated ID
    */
-  store(
+  async store(
     userId: number,
     documentation: string,
     code: string,
@@ -69,7 +72,7 @@ class DocumentationStorage {
       author: string;
     },
     isPublic: boolean = false
-  ): string {
+  ): Promise<string> {
     const id = this.generateId();
     const now = new Date();
 
@@ -85,6 +88,7 @@ class DocumentationStorage {
       updatedAt: now,
       isPublic,
       prInfo,
+      type: prInfo ? 'pr' : 'single',
     };
 
     // Add to storage (at the end, making it most recent)
@@ -96,40 +100,92 @@ class DocumentationStorage {
     }
     this.userIndex.get(userId)!.add(id);
 
-    // Enforce per-user limit
+    // Enforce per-user limit (in-memory only)
     const userDocs = this.getUserDocumentIds(userId);
     if (userDocs.length > this.maxPerUser) {
       const oldestId = userDocs[0]; // Oldest doc for this user
-      this.delete(oldestId);
-      console.log(`Removed oldest documentation entry for user ${userId}: ${oldestId}`);
+      this.storage.delete(oldestId); // Only remove from memory, not database
+      console.log(`Removed oldest documentation entry from memory for user ${userId}: ${oldestId}`);
     }
 
-    // Enforce global max size
+    // Enforce global max size (in-memory only)
     if (this.storage.size > this.maxSize) {
       const firstKey = this.storage.keys().next().value as string;
       if (firstKey) {
-        this.delete(firstKey);
-        console.log(`Removed oldest documentation entry (global limit): ${firstKey}`);
+        this.storage.delete(firstKey); // Only remove from memory, not database
+        console.log(`Removed oldest documentation entry from memory (global limit): ${firstKey}`);
       }
     }
 
-    console.log(`Stored documentation: ${id} for user ${userId} (total: ${this.storage.size})`);
+    console.log(`Stored documentation in memory: ${id} for user ${userId} (total: ${this.storage.size})`);
+
+    // Also store in database
+    try {
+      const user = await tokenStorageDb.getUserInfoById(userId);
+      if (user) {
+        await storageServiceDb.storeDocumentation(user.githubUsername, {
+          documentation,
+          diagram,
+          code,
+          language,
+          qualityScore,
+          prInfo,
+          isPublic,
+          type: prInfo ? 'pr' : 'single',
+        });
+      }
+    } catch (error) {
+      console.error('Failed to store documentation in database:', error);
+    }
+
     return id;
   }
 
   /**
    * Retrieve a documentation entry by ID
+   * Checks database first, then falls back to memory
    */
-  get(id: string): StoredDocumentation | undefined {
-    const entry = this.storage.get(id);
+  async get(id: string): Promise<StoredDocumentation | undefined> {
+    // Check memory first (fast path)
+    let entry = this.storage.get(id);
 
     if (entry) {
       // Move to end (most recently used)
       this.storage.delete(id);
       this.storage.set(id, entry);
+      return entry;
     }
 
-    return entry;
+    // Try database
+    try {
+      const dbDoc = await storageServiceDb.getDocumentation(id);
+      if (dbDoc) {
+        // Convert database format to storage format
+        const converted: StoredDocumentation = {
+          id: dbDoc.id,
+          userId: 0, // Will be filled when we have user lookup
+          documentation: dbDoc.documentation,
+          diagram: dbDoc.diagram,
+          qualityScore: dbDoc.qualityScore,
+          code: dbDoc.code,
+          language: dbDoc.language,
+          createdAt: dbDoc.timestamp,
+          updatedAt: dbDoc.timestamp,
+          isPublic: dbDoc.isPublic || false,
+          type: dbDoc.type,
+          batchInfo: dbDoc.batchInfo,
+          prInfo: dbDoc.prInfo,
+        };
+
+        // Cache it in memory
+        this.storage.set(id, converted);
+        return converted;
+      }
+    } catch (error) {
+      console.error('Error fetching document from database:', error);
+    }
+
+    return undefined;
   }
 
   /**
@@ -141,20 +197,105 @@ class DocumentationStorage {
 
   /**
    * Get all documentation entries for a specific user (most recent first)
+   * Loads from database and merges with memory cache
    */
-  getAllByUser(userId: number): StoredDocumentation[] {
-    return Array.from(this.storage.values())
-      .filter(entry => entry.userId === userId)
-      .reverse();
+  async getAllByUser(userId: number): Promise<StoredDocumentation[]> {
+    // Get from memory first
+    const memoryDocs = Array.from(this.storage.values())
+      .filter(entry => entry.userId === userId);
+
+    // Try to get from database
+    try {
+      const user = await tokenStorageDb.getUserInfoById(userId);
+      if (user) {
+        const dbDocs = await storageServiceDb.getUserDocumentation(user.githubUsername);
+
+        // Convert database docs to storage format
+        const convertedDocs: StoredDocumentation[] = dbDocs.map(doc => ({
+          id: doc.id,
+          userId: userId,
+          documentation: doc.documentation,
+          diagram: doc.diagram,
+          qualityScore: doc.qualityScore,
+          code: doc.code,
+          language: doc.language,
+          createdAt: doc.timestamp,
+          updatedAt: doc.timestamp,
+          isPublic: doc.isPublic || false,
+          type: doc.type,
+          batchInfo: doc.batchInfo,
+          prInfo: doc.prInfo,
+        }));
+
+        // Merge database docs with memory docs (deduplicate by ID)
+        const allDocs = new Map<string, StoredDocumentation>();
+
+        // Add database docs first
+        convertedDocs.forEach(doc => allDocs.set(doc.id, doc));
+
+        // Override with memory docs (they're more recent/up-to-date)
+        memoryDocs.forEach(doc => allDocs.set(doc.id, doc));
+
+        // Return sorted by creation date (most recent first)
+        return Array.from(allDocs.values())
+          .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+      }
+    } catch (error) {
+      console.error('Error fetching user documentation from database:', error);
+    }
+
+    // Fall back to memory only
+    return memoryDocs.reverse();
   }
 
   /**
    * Get all public documentation entries (most recent first)
+   * Loads from database and merges with memory cache
    */
-  getAllPublic(): StoredDocumentation[] {
-    return Array.from(this.storage.values())
-      .filter(entry => entry.isPublic)
-      .reverse();
+  async getAllPublic(): Promise<StoredDocumentation[]> {
+    // Get from memory first
+    const memoryDocs = Array.from(this.storage.values())
+      .filter(entry => entry.isPublic);
+
+    // Try to get from database
+    try {
+      const dbDocs = await storageServiceDb.getPublicDocumentation();
+
+      // Convert database docs to storage format
+      const convertedDocs: StoredDocumentation[] = dbDocs.map(doc => ({
+        id: doc.id,
+        userId: 0, // Public docs don't need userId for display
+        documentation: doc.documentation,
+        diagram: doc.diagram,
+        qualityScore: doc.qualityScore,
+        code: doc.code,
+        language: doc.language,
+        createdAt: doc.timestamp,
+        updatedAt: doc.timestamp,
+        isPublic: true,
+        type: doc.type,
+        batchInfo: doc.batchInfo,
+        prInfo: doc.prInfo,
+      }));
+
+      // Merge database docs with memory docs (deduplicate by ID)
+      const allDocs = new Map<string, StoredDocumentation>();
+
+      // Add database docs first
+      convertedDocs.forEach(doc => allDocs.set(doc.id, doc));
+
+      // Override with memory docs (they're more recent/up-to-date)
+      memoryDocs.forEach(doc => allDocs.set(doc.id, doc));
+
+      // Return sorted by creation date (most recent first)
+      return Array.from(allDocs.values())
+        .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+    } catch (error) {
+      console.error('Error fetching public documentation from database:', error);
+    }
+
+    // Fall back to memory only
+    return memoryDocs.reverse();
   }
 
   /**
@@ -214,7 +355,7 @@ class DocumentationStorage {
    * Store batch processing result
    * Returns the generated ID
    */
-  storeBatch(
+  async storeBatch(
     userId: number,
     fullRepoDocumentation: string,
     repoUrl: string,
@@ -222,7 +363,7 @@ class DocumentationStorage {
     successCount: number,
     failedCount: number,
     isPublic: boolean = false
-  ): string {
+  ): Promise<string> {
     const id = this.generateId();
     const now = new Date();
 
@@ -253,24 +394,47 @@ class DocumentationStorage {
     }
     this.userIndex.get(userId)!.add(id);
 
-    // Enforce per-user limit
+    // Enforce per-user limit (in-memory only)
     const userDocs = this.getUserDocumentIds(userId);
     if (userDocs.length > this.maxPerUser) {
       const oldestId = userDocs[0];
-      this.delete(oldestId);
-      console.log(`Removed oldest documentation entry for user ${userId}: ${oldestId}`);
+      this.storage.delete(oldestId); // Only remove from memory
+      console.log(`Removed oldest documentation entry from memory for user ${userId}: ${oldestId}`);
     }
 
-    // Enforce global max size
+    // Enforce global max size (in-memory only)
     if (this.storage.size > this.maxSize) {
       const firstKey = this.storage.keys().next().value as string;
       if (firstKey) {
-        this.delete(firstKey);
-        console.log(`Removed oldest documentation entry (global limit): ${firstKey}`);
+        this.storage.delete(firstKey); // Only remove from memory
+        console.log(`Removed oldest documentation entry from memory (global limit): ${firstKey}`);
       }
     }
 
-    console.log(`Stored batch documentation: ${id} for user ${userId} (total: ${this.storage.size})`);
+    console.log(`Stored batch documentation in memory: ${id} for user ${userId} (total: ${this.storage.size})`);
+
+    // Also store in database
+    try {
+      const user = await tokenStorageDb.getUserInfoById(userId);
+      if (user) {
+        await storageServiceDb.storeDocumentation(user.githubUsername, {
+          documentation: fullRepoDocumentation,
+          code: '',
+          language: 'batch',
+          type: 'batch',
+          batchInfo: {
+            repoUrl,
+            totalFiles,
+            successCount,
+            failedCount,
+          },
+          isPublic,
+        });
+      }
+    } catch (error) {
+      console.error('Failed to store batch documentation in database:', error);
+    }
+
     return id;
   }
 

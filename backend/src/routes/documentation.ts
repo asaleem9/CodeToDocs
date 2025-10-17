@@ -109,7 +109,7 @@ router.post('/generate', async (req: Request, res: Response) => {
         };
 
         // Store the documentation
-        const id = documentationStorage.store(
+        const id = await documentationStorage.store(
           userId,
           result.documentation,
           code,
@@ -210,7 +210,7 @@ router.get('/generate/result/:jobId', (req: Request, res: Response) => {
  * If 'view=public' query param is provided, returns all public documents instead
  * Authentication is optional - anonymous users get userId 0
  */
-router.get('/documentation', (req: Request, res: Response) => {
+router.get('/documentation', async (req: Request, res: Response) => {
   try {
     const userId = getUserId(req) || 0; // Use 0 for anonymous users
     const view = req.query.view as string;
@@ -218,10 +218,10 @@ router.get('/documentation', (req: Request, res: Response) => {
     let docs;
     if (view === 'public') {
       // Get all public documentation
-      docs = documentationStorage.getAllPublic();
+      docs = await documentationStorage.getAllPublic();
     } else {
       // Get user's own documentation (including anonymous docs with userId 0)
-      docs = documentationStorage.getAllByUser(userId);
+      docs = await documentationStorage.getAllByUser(userId);
     }
 
     const stats = documentationStorage.getStats();
@@ -246,11 +246,11 @@ router.get('/documentation', (req: Request, res: Response) => {
  * Access is granted if: document is public OR user owns the document
  * Authentication is optional - anonymous users get userId 0
  */
-router.get('/documentation/:id', (req: Request, res: Response) => {
+router.get('/documentation/:id', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
     const userId = getUserId(req) || 0; // Use 0 for anonymous users
-    const doc = documentationStorage.get(id);
+    const doc = await documentationStorage.get(id);
 
     if (!doc) {
       return res.status(404).json({
@@ -284,11 +284,11 @@ router.get('/documentation/:id', (req: Request, res: Response) => {
  * Only the owner can delete their own documentation
  * Authentication is optional - anonymous users get userId 0
  */
-router.delete('/documentation/:id', (req: Request, res: Response) => {
+router.delete('/documentation/:id', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
     const userId = getUserId(req) || 0; // Use 0 for anonymous users
-    const doc = documentationStorage.get(id);
+    const doc = await documentationStorage.get(id);
 
     if (!doc) {
       return res.status(404).json({

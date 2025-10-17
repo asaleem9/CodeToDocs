@@ -9,11 +9,21 @@ import batchRoutes from './routes/batch';
 import integrationsRoutes from './routes/integrations';
 import authRoutes from './routes/auth';
 import settingsRoutes from './routes/settings';
+import { checkDatabaseConnection, closeDatabaseConnection } from './db/connection';
 
 dotenv.config();
 
 // Debug: Check if API key is loaded
 console.log('ANTHROPIC_API_KEY loaded:', process.env.ANTHROPIC_API_KEY ? 'Yes (length: ' + process.env.ANTHROPIC_API_KEY.length + ')' : 'No');
+
+// Check database connection on startup
+checkDatabaseConnection().then(connected => {
+  if (connected) {
+    console.log('✓ Database persistence enabled');
+  } else {
+    console.log('⚠ Database not available, using in-memory storage only');
+  }
+});
 
 const app: Express = express();
 const port = process.env.PORT || 3001;
@@ -74,6 +84,29 @@ app.use('/api/auth', authRoutes);
 // Settings routes
 app.use('/api/settings', settingsRoutes);
 
-app.listen(port, () => {
+const server = app.listen(port, () => {
   console.log(`⚡️[server]: Server is running at http://localhost:${port}`);
 });
+
+// Graceful shutdown
+const shutdown = async (signal: string) => {
+  console.log(`\n${signal} received, closing server gracefully...`);
+
+  server.close(async () => {
+    console.log('HTTP server closed');
+
+    // Close database connection
+    await closeDatabaseConnection();
+
+    process.exit(0);
+  });
+
+  // Force close after 10s
+  setTimeout(() => {
+    console.error('Forced shutdown after timeout');
+    process.exit(1);
+  }, 10000);
+};
+
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+process.on('SIGINT', () => shutdown('SIGINT'));

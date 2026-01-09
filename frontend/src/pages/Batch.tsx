@@ -6,7 +6,16 @@ import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism'
 import { useBatch } from '../contexts/BatchContext'
 import { showErrorToast, showSuccessToast, showLoadingToast, dismissToast } from '../utils/errorHandler'
+import { downloadAsHTML, downloadAsPDF } from '../utils/exportUtils'
 import './Batch.css'
+
+interface BatchProgress {
+  total: number
+  completed: number
+  current: string
+  percentage: number
+  failed: number
+}
 
 interface DocumentedFile {
   filePath: string
@@ -36,20 +45,39 @@ function Batch() {
   const [result, setResult] = useState<BatchResult | null>(null)
   const [selectedDoc, setSelectedDoc] = useState<DocumentedFile | null>(null)
   const [maxFiles, setMaxFiles] = useState<number>(50)
+  const [uploadMode, setUploadMode] = useState<'url' | 'zip'>('url')
+  const [selectedFile, setSelectedFile] = useState<File | null>(null)
+  const [localProgress, setLocalProgress] = useState<BatchProgress | null>(null)
+  const [localBatchId, setLocalBatchId] = useState<string>('')
+  const [localIsProcessing, setLocalIsProcessing] = useState<boolean>(false)
   const progressInterval = useRef<ReturnType<typeof setInterval> | null>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
-  // Use batch context for state
-  const { isProcessing, batchId, progress } = batchContext
+  // Use batch context for URL mode, local state for zip mode
+  const isProcessing = uploadMode === 'zip' ? localIsProcessing : batchContext.isProcessing
+  const batchId = uploadMode === 'zip' ? localBatchId : batchContext.batchId
+  const progress = uploadMode === 'zip' ? localProgress : batchContext.progress
 
   const startProgressPolling = (id: string) => {
+    // Clear any existing interval
+    if (progressInterval.current) {
+      clearInterval(progressInterval.current)
+    }
+
     progressInterval.current = setInterval(async () => {
       try {
         const progressRes = await axios.get(`/api/batch/progress/${id}`)
+
+        // Update progress in local state
+        if (progressRes.data.progress) {
+          setLocalProgress(progressRes.data.progress)
+        }
 
         if (progressRes.data.completed) {
           // Fetch final result
           const resultRes = await axios.get(`/api/batch/result/${id}`)
           setResult(resultRes.data)
+          setLocalIsProcessing(false)
 
           // Automatically select full repo documentation if available
           if (resultRes.data.fullRepoDocumentation) {
@@ -64,9 +92,11 @@ function Batch() {
         }
 
         if (progressRes.data.error) {
+          setLocalIsProcessing(false)
           if (progressInterval.current) {
             clearInterval(progressInterval.current)
           }
+          showErrorToast({ response: { data: { error: progressRes.data.error } } })
         }
       } catch (err) {
         console.error('Error polling progress:', err)
@@ -110,41 +140,101 @@ function Batch() {
     }
   }, [])
 
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (file) {
+      if (!file.name.endsWith('.zip')) {
+        showErrorToast({
+          response: {
+            data: { error: 'Please select a ZIP file' }
+          }
+        })
+        return
+      }
+      setSelectedFile(file)
+    }
+  }
+
   const handleStartBatch = async () => {
-    if (!repoUrl.trim()) {
-      showErrorToast({
-        response: {
-          data: { error: 'Please enter a GitHub repository URL' }
-        }
-      })
-      return
-    }
+    if (uploadMode === 'url') {
+      // Existing URL-based batch processing
+      if (!repoUrl.trim()) {
+        showErrorToast({
+          response: {
+            data: { error: 'Please enter a GitHub repository URL' }
+          }
+        })
+        return
+      }
 
-    // Validate GitHub URL format
-    const githubPattern = /^https?:\/\/(www\.)?github\.com\/[\w-]+\/[\w.-]+\/?$/
-    if (!githubPattern.test(repoUrl)) {
-      showErrorToast({
-        response: {
-          data: { error: 'Invalid GitHub URL format. Example: https://github.com/user/repo' }
-        }
-      })
-      return
-    }
+      // Validate GitHub URL format
+      const githubPattern = /^https?:\/\/(www\.)?github\.com\/[\w-]+\/[\w.-]+\/?$/
+      if (!githubPattern.test(repoUrl)) {
+        showErrorToast({
+          response: {
+            data: { error: 'Invalid GitHub URL format. Example: https://github.com/user/repo' }
+          }
+        })
+        return
+      }
 
-    const loadingToastId = showLoadingToast('Starting batch processing...')
-    setResult(null)
-    setSelectedDoc(null)
+      const loadingToastId = showLoadingToast('Starting batch processing...')
+      setResult(null)
+      setSelectedDoc(null)
 
-    try {
-      await batchContext.startBatch(repoUrl, maxFiles)
-      dismissToast(loadingToastId)
-      showSuccessToast('Batch processing started! You can navigate away and track progress.')
+      try {
+        await batchContext.startBatch(repoUrl, maxFiles)
+        dismissToast(loadingToastId)
+        showSuccessToast('Batch processing started! You can navigate away and track progress.')
 
-      // Start polling for result
-      startProgressPolling(batchContext.batchId)
-    } catch (err: any) {
-      dismissToast(loadingToastId)
-      showErrorToast(err)
+        // Start polling for result
+        startProgressPolling(batchContext.batchId)
+      } catch (err: any) {
+        dismissToast(loadingToastId)
+        showErrorToast(err)
+      }
+    } else {
+      // New ZIP file upload processing
+      if (!selectedFile) {
+        showErrorToast({
+          response: {
+            data: { error: 'Please select a ZIP file to upload' }
+          }
+        })
+        return
+      }
+
+      const loadingToastId = showLoadingToast('Uploading and processing zip file...')
+      setResult(null)
+      setSelectedDoc(null)
+
+      try {
+        const formData = new FormData()
+        formData.append('zipFile', selectedFile)
+        formData.append('options', JSON.stringify({ maxFiles, maxFileSize: 100000 }))
+
+        const response = await axios.post('/api/batch/upload-zip', formData, {
+          headers: {
+            'Content-Type': 'multipart/form-data',
+          },
+        })
+
+        const { batchId: newBatchId } = response.data
+
+        // Update local state
+        setLocalBatchId(newBatchId)
+        setLocalIsProcessing(true)
+        setLocalProgress(null)
+
+        dismissToast(loadingToastId)
+        showSuccessToast('Zip file uploaded! Processing started.')
+
+        // Start polling for result
+        startProgressPolling(newBatchId)
+      } catch (err: any) {
+        dismissToast(loadingToastId)
+        showErrorToast(err)
+      }
     }
   }
 
@@ -203,6 +293,52 @@ function Batch() {
     showSuccessToast('Full repository documentation downloaded')
   }
 
+  const handleDownloadHTML = async () => {
+    if (!result || !result.fullRepoDocumentation) return
+
+    const loadingToastId = showLoadingToast('Generating HTML...')
+
+    try {
+      const repoName = result.repoUrl.split('/').pop() || 'repository'
+      await downloadAsHTML(
+        result.fullRepoDocumentation,
+        {
+          language: 'Repository',
+          generatedAt: new Date(),
+        },
+        `${repoName}-documentation-${Date.now()}.html`
+      )
+      dismissToast(loadingToastId)
+      showSuccessToast('HTML documentation downloaded')
+    } catch (err) {
+      dismissToast(loadingToastId)
+      showErrorToast(err)
+    }
+  }
+
+  const handleDownloadPDF = async () => {
+    if (!result || !result.fullRepoDocumentation) return
+
+    const loadingToastId = showLoadingToast('Generating PDF... This may take a moment.')
+
+    try {
+      const repoName = result.repoUrl.split('/').pop() || 'repository'
+      await downloadAsPDF(
+        result.fullRepoDocumentation,
+        {
+          language: 'Repository',
+          generatedAt: new Date(),
+        },
+        `${repoName}-documentation-${Date.now()}.pdf`
+      )
+      dismissToast(loadingToastId)
+      showSuccessToast('PDF documentation downloaded')
+    } catch (err) {
+      dismissToast(loadingToastId)
+      showErrorToast(err)
+    }
+  }
+
   return (
     <div className="batch-page">
       <div className="batch-container">
@@ -212,18 +348,71 @@ function Batch() {
         </header>
 
         <div className="batch-input-section">
-          <div className="input-group">
-            <label htmlFor="repoUrl">GitHub Repository URL</label>
-            <input
-              id="repoUrl"
-              type="text"
-              value={repoUrl}
-              onChange={(e) => setRepoUrl(e.target.value)}
-              placeholder="https://github.com/username/repository"
-              className="repo-input"
+          <div className="mode-selector">
+            <button
+              className={`mode-btn ${uploadMode === 'url' ? 'active' : ''}`}
+              onClick={() => setUploadMode('url')}
               disabled={isProcessing}
-            />
+            >
+              📡 GitHub URL
+            </button>
+            <button
+              className={`mode-btn ${uploadMode === 'zip' ? 'active' : ''}`}
+              onClick={() => setUploadMode('zip')}
+              disabled={isProcessing}
+            >
+              📦 Upload ZIP
+            </button>
           </div>
+
+          {uploadMode === 'url' ? (
+            <div className="input-group">
+              <label htmlFor="repoUrl">GitHub Repository URL</label>
+              <input
+                id="repoUrl"
+                type="text"
+                value={repoUrl}
+                onChange={(e) => setRepoUrl(e.target.value)}
+                placeholder="https://github.com/username/repository"
+                className="repo-input"
+                disabled={isProcessing}
+              />
+            </div>
+          ) : (
+            <div className="input-group">
+              <label htmlFor="zipFile">Upload Zipped Repository</label>
+              <input
+                ref={fileInputRef}
+                id="zipFile"
+                type="file"
+                accept=".zip"
+                onChange={handleFileSelect}
+                className="file-input"
+                disabled={isProcessing}
+                style={{ display: 'none' }}
+              />
+              <div className="file-upload-area">
+                <button
+                  className="file-select-btn"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={isProcessing}
+                >
+                  {selectedFile ? '✓ Change File' : '📁 Select ZIP File'}
+                </button>
+                {selectedFile && (
+                  <div className="selected-file-info">
+                    <span className="file-name">{selectedFile.name}</span>
+                    <span className="file-size">
+                      ({(selectedFile.size / 1024 / 1024).toFixed(2)} MB)
+                    </span>
+                  </div>
+                )}
+                {!selectedFile && (
+                  <p className="file-hint">Select a zipped GitHub repository to process</p>
+                )}
+              </div>
+            </div>
+          )}
 
           <div className="input-group">
             <label htmlFor="maxFiles">Maximum Files</label>
@@ -296,13 +485,35 @@ function Batch() {
               <h2>Batch Complete!</h2>
               <div className="header-actions">
                 {result.fullRepoDocumentation && (
-                  <button className="download-full-doc-btn" onClick={handleDownloadFullRepo}>
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-                      <polyline points="14 2 14 8 20 8"></polyline>
-                    </svg>
-                    Download Full Repo Doc
-                  </button>
+                  <>
+                    <button className="download-full-doc-btn" onClick={handleDownloadFullRepo}>
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                        <polyline points="14 2 14 8 20 8"></polyline>
+                      </svg>
+                      Markdown
+                    </button>
+                    <button className="download-html-btn" onClick={handleDownloadHTML}>
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                        <polyline points="14 2 14 8 20 8"></polyline>
+                        <path d="M16 13H8"></path>
+                        <path d="M16 17H8"></path>
+                        <path d="M10 9H8"></path>
+                      </svg>
+                      HTML
+                    </button>
+                    <button className="download-pdf-btn" onClick={handleDownloadPDF}>
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                        <polyline points="14 2 14 8 20 8"></polyline>
+                        <line x1="16" y1="13" x2="8" y2="13"></line>
+                        <line x1="16" y1="17" x2="8" y2="17"></line>
+                        <line x1="10" y1="9" x2="8" y2="9"></line>
+                      </svg>
+                      PDF
+                    </button>
+                  </>
                 )}
                 <button className="download-all-btn" onClick={handleDownloadAll}>
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -310,7 +521,7 @@ function Batch() {
                     <polyline points="7 10 12 15 17 10"></polyline>
                     <line x1="12" y1="15" x2="12" y2="3"></line>
                   </svg>
-                  Download All Files
+                  All Files
                 </button>
               </div>
             </div>
@@ -464,7 +675,7 @@ function Batch() {
           <div className="info-section">
             <h3>How Batch Processing Works</h3>
             <ol>
-              <li>Enter a GitHub repository URL</li>
+              <li>Choose input method: GitHub URL or Upload ZIP file</li>
               <li>Set the maximum number of files to process</li>
               <li>Click "Start Batch Processing"</li>
               <li>Watch the progress as files are documented</li>
@@ -472,6 +683,11 @@ function Batch() {
             </ol>
 
             <div className="features-grid">
+              <div className="feature">
+                <span className="feature-icon">📦</span>
+                <h4>ZIP Upload</h4>
+                <p>Upload a zipped repository directly for processing</p>
+              </div>
               <div className="feature">
                 <span className="feature-icon">📁</span>
                 <h4>Auto-Detection</h4>

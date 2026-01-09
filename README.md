@@ -11,11 +11,14 @@ CodeToDocsAI/
 │   │   ├── index.ts        # Main server entry point
 │   │   ├── routes/
 │   │   │   ├── documentation.ts   # Documentation API endpoints
+│   │   │   ├── batch.ts           # Batch processing and zip upload
 │   │   │   └── webhook.ts         # GitHub webhook handler
-│   │   └── services/
-│   │       ├── llmService.ts      # Claude API integration
-│   │       ├── storageService.ts  # In-memory LRU cache (20 entries)
-│   │       └── qualityScoreService.ts  # Documentation quality analysis
+│   │   ├── services/
+│   │   │   ├── llmService.ts      # Claude API integration
+│   │   │   ├── storageService.ts  # PostgreSQL database storage
+│   │   │   └── qualityScoreService.ts  # Documentation quality analysis
+│   │   └── utils/
+│   │       └── batchProcessor.ts  # Repository processing logic
 │   ├── .env                # Environment variables (NOT in git)
 │   ├── .env.example        # Environment template
 │   ├── package.json
@@ -27,6 +30,8 @@ CodeToDocsAI/
 │   │   ├── App.css        # Global styling
 │   │   ├── pages/
 │   │   │   ├── Home.tsx           # Main documentation generator
+│   │   │   ├── Batch.tsx          # Batch processing (URL & ZIP upload)
+│   │   │   ├── Batch.css
 │   │   │   ├── History.tsx        # View past documentation
 │   │   │   ├── History.css
 │   │   │   ├── Settings.tsx       # API key and webhook config
@@ -34,6 +39,8 @@ CodeToDocsAI/
 │   │   ├── components/
 │   │   │   ├── QualityScore.tsx   # Quality score display
 │   │   │   └── QualityScore.css
+│   │   ├── utils/
+│   │   │   └── exportUtils.ts     # Export to Markdown/HTML/PDF
 │   │   ├── main.tsx       # React entry point
 │   │   └── index.css      # Global styles
 │   ├── index.html
@@ -118,10 +125,15 @@ Open your browser and navigate to: **http://localhost:5173**
 - **Express.js** - Web framework
 - **TypeScript** - Type safety
 - **@anthropic-ai/sdk** - Claude API integration
+- **PostgreSQL** - Database persistence
+- **pg** - PostgreSQL client
 - **CORS** - Cross-origin resource sharing
 - **dotenv** - Environment variables
 - **nodemon** - Auto-reload during development
 - **crypto** - Webhook signature verification
+- **multer** - File upload handling
+- **adm-zip** - ZIP file extraction
+- **simple-git** - Git repository cloning
 
 ### Frontend
 - **React 18** - UI framework
@@ -133,6 +145,8 @@ Open your browser and navigate to: **http://localhost:5173**
 - **react-syntax-highlighter** - Code syntax highlighting
 - **react-hot-toast** - Toast notifications
 - **mermaid** - Diagram rendering
+- **marked** - Markdown to HTML conversion
+- **html2pdf.js** - PDF generation from HTML
 
 ## 📡 API Endpoints
 
@@ -211,15 +225,50 @@ Get storage statistics.
 #### `POST /api/webhook/github`
 GitHub webhook endpoint for PR merge events (requires webhook secret).
 
+#### `POST /api/batch/start`
+Start batch processing of a GitHub repository URL.
+
+**Request Body:**
+```json
+{
+  "repoUrl": "https://github.com/owner/repo",
+  "options": {
+    "maxFiles": 50,
+    "maxFileSize": 100000,
+    "extensions": [".js", ".ts", ".py"]
+  }
+}
+```
+
+#### `POST /api/batch/upload-zip`
+Upload a zipped repository for batch processing (max 100MB).
+
+**Request:** Multipart form data with `zipFile` field
+
+#### `GET /api/batch/progress/:batchId`
+Get real-time progress of a batch processing job.
+
+#### `GET /api/batch/result/:batchId`
+Get the completed result of a batch job with full documentation.
+
+#### `POST /api/batch/generate-full-doc/:batchId`
+Generate comprehensive repository-level documentation from batch results.
+
 ## ✨ Features
 
 ### Current Features
 
 #### Core Functionality
 - ✅ **AI-Powered Documentation** - Uses Claude 3.5 Sonnet for comprehensive docs
-- ✅ **Multiple Languages** - JavaScript, Python, Java, TypeScript support
+- ✅ **Multiple Languages** - JavaScript, Python, Java, TypeScript, Go, Rust, C++, and more
 - ✅ **Split View Layout** - Code input on left, documentation on right
 - ✅ **Real-time Generation** - Live documentation as you type
+- ✅ **Batch Processing** - Process entire repositories at once
+  - **GitHub URL Import** - Clone and document public repositories
+  - **ZIP Upload** - Upload zipped repositories (up to 100MB)
+  - **Real-time Progress** - Live progress tracking with percentage
+  - **File Filtering** - Configurable file limits, size limits, and extensions
+  - **Full Repo Documentation** - AI-generated repository overview and summary
 
 #### Visual Enhancements
 - ✅ **Syntax Highlighting** - VS Code Dark Plus theme for code blocks
@@ -245,11 +294,13 @@ GitHub webhook endpoint for PR merge events (requires webhook secret).
 - ✅ **Progress Bar Visualization** - Animated quality indicator
 
 #### Storage & History
-- ✅ **In-Memory Storage** - LRU cache with 20 entry limit
+- ✅ **PostgreSQL Database** - Persistent storage with encryption
 - ✅ **History Page** - View all past documentation generations
 - ✅ **Documentation Tracking** - Timestamps, language tags, PR info
 - ✅ **Search & Filter** - Find documentation by language or source
 - ✅ **Delete Functionality** - Remove individual entries
+- ✅ **Batch History** - Track batch processing jobs with full repository docs
+- ✅ **Multi-user Support** - User-specific documentation with OAuth authentication
 
 #### GitHub Integration
 - ✅ **Webhook Handler** - Automatic documentation on PR merge
@@ -259,7 +310,7 @@ GitHub webhook endpoint for PR merge events (requires webhook secret).
 
 #### User Experience
 - ✅ **Settings Page** - Configure API keys and view webhook URL
-- ✅ **React Router** - Seamless navigation (Home, History, Settings)
+- ✅ **React Router** - Seamless navigation (Home, Batch, History, Settings)
 - ✅ **Copy to Clipboard** - One-click copy of documentation
 - ✅ **Clear Function** - Reset form with one click
 - ✅ **Character Counter** - Live character count for code input
@@ -267,6 +318,16 @@ GitHub webhook endpoint for PR merge events (requires webhook secret).
 - ✅ **Loading States** - Visual feedback during generation
 - ✅ **Error Handling** - Comprehensive error messages
 - ✅ **localStorage Support** - Persistent API key storage
+
+#### Export & Download
+- ✅ **Multiple Export Formats** - Download documentation in various formats
+  - **Markdown (.md)** - Plain markdown with metadata header
+  - **HTML** - Beautiful styled HTML with embedded CSS
+  - **PDF** - Browser-native print-to-PDF with preserved styling
+- ✅ **Copy Functions** - Copy as Markdown or HTML to clipboard
+- ✅ **Metadata Inclusion** - All exports include generation date, language, quality score
+- ✅ **Batch Export** - Download full repository documentation
+- ✅ **Professional Styling** - PDFs match the CodeToDocs visual aesthetic
 
 ## 🎯 Key Services
 
@@ -277,10 +338,12 @@ GitHub webhook endpoint for PR merge events (requires webhook secret).
 - Error handling and retry logic
 
 ### Storage Service (`storageService.ts`)
-- LRU (Least Recently Used) cache implementation
-- Max 20 entries with automatic eviction
+- PostgreSQL database with persistent storage
+- User-specific documentation with OAuth integration
+- Encrypted OAuth token storage
 - Support for documentation, diagrams, quality scores, and PR info
-- Query by ID, PR number, or get all
+- Batch documentation storage with full repository docs
+- Query by ID, user ID, or get all
 
 ### Quality Score Service (`qualityScoreService.ts`)
 - Weighted scoring algorithm
@@ -361,6 +424,11 @@ npm run preview          # Preview production build
 | `ANTHROPIC_API_KEY` | **Yes** | Your Anthropic API key |
 | `GITHUB_WEBHOOK_SECRET` | No | Secret for GitHub webhook verification |
 | `GITHUB_TOKEN` | No | GitHub token for API access |
+| `GITHUB_CLIENT_ID` | No | GitHub OAuth client ID |
+| `GITHUB_CLIENT_SECRET` | No | GitHub OAuth client secret |
+| `SESSION_SECRET` | No | Session encryption secret |
+| `DATABASE_URL` | No | PostgreSQL connection string |
+| `DATABASE_ENCRYPTION_KEY` | No | 32-byte key for encrypting OAuth tokens |
 
 ### Frontend Configuration
 
@@ -489,13 +557,14 @@ See `GCP_DEPLOYMENT_GUIDE.md` for detailed manual deployment instructions and tr
 
 Potential features for future development:
 - OpenAI integration (UI prepared)
-- Export to PDF/Markdown files
 - Custom documentation templates
-- Batch processing for multiple files
 - API documentation generation from OpenAPI specs
 - Code complexity analysis
 - SEO metadata generation
 - Multi-language support for UI
+- Private repository support with GitHub App
+- Scheduled documentation updates
+- Documentation versioning and diff tracking
 
 ## 🤝 Contributing
 
@@ -544,12 +613,11 @@ If you encounter issues:
 
 ### Known Issues & Limitations
 
-- Storage is not persistent (in-memory only)
-- No authentication system
 - No rate limiting on API endpoints
-- Webhook endpoint queues PRs but doesn't process them automatically yet
 - OpenAI integration UI exists but not implemented
-- No support for very large codebases (single file input only)
+- Large repositories may take significant time to process
+- Batch processing limited to 50 files by default (configurable)
+- ZIP uploads limited to 100MB
 
 ### Development History
 
@@ -565,6 +633,10 @@ If you encounter issues:
 9. Documentation quality scoring system (0-100 with weighted criteria)
 10. Demo mode with preloaded code samples
 11. Export functionality (Markdown/HTML download and copy)
+12. Batch processing with GitHub URL and ZIP upload support
+13. PostgreSQL database integration with user authentication
+14. Multi-format export (Markdown, HTML, PDF) with professional styling
+15. Real-time progress tracking for batch jobs
 
 ### Latest Features (Session 2)
 
@@ -637,16 +709,50 @@ If you encounter issues:
 
 **Modified Files:**
 - `frontend/src/pages/Home.tsx` - Demo mode, export functionality, removed health check
-- `frontend/src/pages/Batch.tsx` - Fixed NodeJS.Timeout type issue
+- `frontend/src/pages/Batch.tsx` - Fixed NodeJS.Timeout type issue, added ZIP upload mode
 - `frontend/src/config.ts` - Runtime environment variable support
 - `backend/src/routes/webhook.ts` - Type assertion fixes
-- `backend/src/services/storageService.ts` - Map iterator type safety
+- `backend/src/services/storageService.ts` - PostgreSQL integration, encryption
 - `backend/src/utils/graphqlParser.ts` - Readonly array handling
 - `frontend/src/App.css` - Added demo and export menu styling
 - All storage and LLM services updated to include quality scores and diagrams
 
+### Latest Features (Session 4)
+
+**Batch Processing Enhancements:**
+- **ZIP Upload Support** - Upload zipped repositories directly (up to 100MB)
+- **Dual Mode Processing** - Toggle between GitHub URL and ZIP upload
+- **Real-time Progress** - Live progress bars with percentage completion
+- **File Extraction** - Automatic ZIP extraction and file scanning
+- **Background Processing** - Non-blocking batch job execution
+- **Full Repository Documentation** - AI-generated comprehensive repo overview
+
+**Export System Improvements:**
+- **PDF Generation** - Browser-native print-to-PDF with preserved styling
+  - Professional gradient header with purple/indigo theme
+  - Styled metadata boxes with colored labels
+  - Code blocks with dark gradient backgrounds
+  - Colored headings and syntax highlighting
+  - Print-optimized CSS with color preservation
+- **HTML Export** - Beautifully styled standalone HTML files
+- **Markdown Export** - Clean markdown with metadata headers
+- **Batch Export** - Download full repository documentation
+
+**Database & Authentication:**
+- **PostgreSQL Integration** - Full database persistence replacing in-memory storage
+- **User Authentication** - GitHub OAuth integration
+- **Encrypted Storage** - OAuth tokens encrypted in database
+- **Multi-user Support** - User-specific documentation and history
+
+**Dependencies Added:**
+- `multer` - File upload middleware
+- `adm-zip` - ZIP file extraction
+- `html2pdf.js` - PDF generation
+- `pg` - PostgreSQL client
+- `bcrypt` - Password hashing (for encryption keys)
+
 ---
 
-**Last Updated:** October 2025 (Session 3 - GCP Deployment)
+**Last Updated:** October 2025 (Session 4 - Batch Processing & Export)
 **Claude Model:** claude-sonnet-4-5-20250929
-**Status:** ✅ Fully Functional with GCP Deployment Support
+**Status:** ✅ Fully Functional with Database, Batch Processing, and Export Features

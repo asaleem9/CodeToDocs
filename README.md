@@ -1,758 +1,255 @@
 # CodeToDocsAI
 
-AI-powered documentation generator that transforms your code into beautiful, comprehensive documentation using Claude 3.5 Sonnet.
+An intelligent documentation generator that transforms source code into comprehensive, production-ready documentation with visual diagrams and quality analysis.
 
-## 🏗️ Project Structure
+## Live Demo
 
-```
-CodeToDocsAI/
-├── backend/                 # Express + TypeScript API
-│   ├── src/
-│   │   ├── index.ts        # Main server entry point
-│   │   ├── routes/
-│   │   │   ├── documentation.ts   # Documentation API endpoints
-│   │   │   ├── batch.ts           # Batch processing and zip upload
-│   │   │   └── webhook.ts         # GitHub webhook handler
-│   │   ├── services/
-│   │   │   ├── llmService.ts      # Claude API integration
-│   │   │   ├── storageService.ts  # PostgreSQL database storage
-│   │   │   └── qualityScoreService.ts  # Documentation quality analysis
-│   │   └── utils/
-│   │       └── batchProcessor.ts  # Repository processing logic
-│   ├── .env                # Environment variables (NOT in git)
-│   ├── .env.example        # Environment template
-│   ├── package.json
-│   └── tsconfig.json
-│
-├── frontend/               # React + Vite + TypeScript
-│   ├── src/
-│   │   ├── App.tsx        # Main React component with routing
-│   │   ├── App.css        # Global styling
-│   │   ├── pages/
-│   │   │   ├── Home.tsx           # Main documentation generator
-│   │   │   ├── Batch.tsx          # Batch processing (URL & ZIP upload)
-│   │   │   ├── Batch.css
-│   │   │   ├── History.tsx        # View past documentation
-│   │   │   ├── History.css
-│   │   │   ├── Settings.tsx       # API key and webhook config
-│   │   │   └── Settings.css
-│   │   ├── components/
-│   │   │   ├── QualityScore.tsx   # Quality score display
-│   │   │   └── QualityScore.css
-│   │   ├── utils/
-│   │   │   └── exportUtils.ts     # Export to Markdown/HTML/PDF
-│   │   ├── main.tsx       # React entry point
-│   │   └── index.css      # Global styles
-│   ├── index.html
-│   ├── package.json
-│   ├── tsconfig.json
-│   └── vite.config.ts     # Vite config with proxy to backend
-│
-├── shared/                # Shared TypeScript types (future use)
-│   ├── src/
-│   │   ├── types.ts      # Common interfaces
-│   │   └── index.ts
-│   ├── package.json
-│   └── tsconfig.json
-│
-├── package.json           # Root workspace config
-└── README.md             # This file
-```
+**Frontend:** https://codetodocs-frontend-ywspvwqcla-uc.a.run.app
+**Backend API:** https://codetodocs-backend-ywspvwqcla-uc.a.run.app
 
-## 🚀 Getting Started
+## Features
+
+- **Multi-Language Support** - JavaScript, TypeScript, Python, Java, Go, Rust, C++, GraphQL
+- **Visual Diagrams** - Automatically generates flowcharts, class diagrams, and dependency graphs
+- **Quality Scoring** - Analyzes documentation completeness with weighted scoring (0-100)
+- **Batch Processing** - Document entire repositories via GitHub URL or ZIP upload
+- **GitHub Integration** - OAuth authentication and webhook support for automated PR documentation
+- **Export Options** - Download as Markdown, HTML, or PDF with professional styling
+- **Real-time Progress** - Live tracking for batch operations with concurrent processing
+- **Persistent Storage** - PostgreSQL database with encrypted OAuth token storage
+
+## Tech Stack
+
+### Backend
+- **Express.js** + **TypeScript** - REST API server
+- **PostgreSQL** - Data persistence with Drizzle ORM
+- **Anthropic Claude API** - LLM-powered documentation generation
+- **GitHub OAuth** - User authentication and repository access
+- **Socket.io** - Real-time progress updates
+
+### Frontend
+- **React 18** + **TypeScript** - Modern UI framework
+- **Vite** - Build tool and dev server
+- **React Router** - Client-side routing
+- **Mermaid** - Diagram rendering
+- **Monaco Editor** - Code input with syntax highlighting
+
+### Infrastructure
+- **Google Cloud Run** - Serverless container deployment
+- **Cloud SQL** - Managed PostgreSQL
+- **Secret Manager** - Secure credential storage
+- **Docker** - Multi-stage production builds
+
+## Quick Start
 
 ### Prerequisites
-
-- Node.js v18 or higher
-- npm or yarn
-- Anthropic API key (get one at https://console.anthropic.com/)
+- Node.js 18+
+- PostgreSQL (optional for local development)
+- Anthropic API key
+- GitHub OAuth app (for login features)
 
 ### Installation
 
-1. **Install dependencies for all workspaces:**
-   ```bash
-   cd CodeToDocsAI
-   npm install
-   ```
-
-2. **Set up environment variables:**
-   ```bash
-   cd backend
-   cp .env.example .env
-   ```
-
-   Edit `backend/.env` and add your Anthropic API key:
-   ```env
-   PORT=3001
-   NODE_ENV=development
-   FRONTEND_URL=http://localhost:5173
-   ANTHROPIC_API_KEY=sk-ant-api03-YOUR_KEY_HERE
-   GITHUB_WEBHOOK_SECRET=your_webhook_secret_here  # Optional
-   GITHUB_TOKEN=ghp_your_github_token               # Optional
-   ```
-
-### Running the Application
-
-#### Option 1: Run both servers simultaneously (Recommended)
 ```bash
-# From project root
-npm run dev
-```
+# Clone repository
+git clone https://github.com/asaleem9/CodeToDocs.git
+cd CodeToDocs
 
-#### Option 2: Run servers separately
+# Install dependencies
+npm install
 
-**Terminal 1 - Backend:**
-```bash
+# Configure backend environment
 cd backend
+cp .env.example .env
+# Edit .env with your credentials
+
+# Start development servers
+cd ..
 npm run dev
-# Server runs on http://localhost:3001
 ```
 
-**Terminal 2 - Frontend:**
+The application will be available at `http://localhost:5173`
+
+### Environment Variables
+
+**Backend** (`backend/.env`):
+```env
+PORT=3001
+NODE_ENV=development
+FRONTEND_URL=http://localhost:5173
+ANTHROPIC_API_KEY=your_api_key_here
+GITHUB_CLIENT_ID=your_github_oauth_client_id
+GITHUB_CLIENT_SECRET=your_github_oauth_client_secret
+SESSION_SECRET=your_random_session_secret
+DATABASE_URL=postgresql://user:password@localhost:5432/codetodocs
+DATABASE_ENCRYPTION_KEY=your_32_byte_encryption_key
+```
+
+## Architecture
+
+```
+┌─────────────────────┐
+│   React Frontend    │
+│   (Vite + TypeScript)│
+└──────────┬──────────┘
+           │ REST API + WebSocket
+┌──────────▼──────────┐
+│   Express Backend   │
+│   (TypeScript)      │
+├─────────────────────┤
+│ • LLM Service       │
+│ • Storage Service   │
+│ • Quality Scorer    │
+│ • Batch Processor   │
+└──────────┬──────────┘
+           │
+    ┌──────┴──────┬───────────┐
+    ▼             ▼           ▼
+┌────────┐  ┌──────────┐  ┌──────┐
+│ Claude │  │PostgreSQL│  │GitHub│
+│  API   │  │ Database │  │ API  │
+└────────┘  └──────────┘  └──────┘
+```
+
+## API Endpoints
+
+### Documentation
+- `POST /api/generate` - Generate documentation for code snippet
+- `GET /api/documentation` - Retrieve all user documentation
+- `GET /api/documentation/:id` - Get specific documentation entry
+- `DELETE /api/documentation/:id` - Delete documentation entry
+
+### Batch Processing
+- `POST /api/batch/start` - Start batch processing for GitHub repository
+- `POST /api/batch/upload-zip` - Upload and process ZIP file
+- `GET /api/batch/progress/:batchId` - Get real-time progress
+- `GET /api/batch/result/:batchId` - Retrieve batch results
+
+### GitHub Integration
+- `GET /api/auth/github` - Initiate GitHub OAuth flow
+- `GET /api/auth/github/callback` - OAuth callback handler
+- `POST /api/webhook/github` - GitHub webhook endpoint for PR events
+
+### Health & Stats
+- `GET /api/health` - Service health check
+- `GET /api/stats` - Storage and usage statistics
+
+## Deployment
+
+### Google Cloud Platform
+
+The project includes automated deployment scripts:
+
 ```bash
-cd frontend
-npm run dev
-# App runs on http://localhost:5173
+# Initial deployment with secret setup
+./deploy-tagged.sh
+
+# Quick redeployment (uses existing secrets)
+./redeploy.sh
 ```
 
-### Accessing the Application
+**Resources Created:**
+- 2 Cloud Run services (frontend + backend)
+- Cloud SQL PostgreSQL instance (optional)
+- Secret Manager secrets
+- Container Registry images
 
-Open your browser and navigate to: **http://localhost:5173**
+**Configuration:**
+- Auto-scaling: 0-3 instances (backend), 0-2 instances (frontend)
+- Memory: 512Mi (backend), 256Mi (frontend)
+- CPU throttling enabled for cost optimization
 
-## 🛠️ Tech Stack
+See deployment scripts for detailed configuration options.
 
-### Backend
-- **Express.js** - Web framework
-- **TypeScript** - Type safety
-- **@anthropic-ai/sdk** - Claude API integration
-- **PostgreSQL** - Database persistence
-- **pg** - PostgreSQL client
-- **CORS** - Cross-origin resource sharing
-- **dotenv** - Environment variables
-- **nodemon** - Auto-reload during development
-- **crypto** - Webhook signature verification
-- **multer** - File upload handling
-- **adm-zip** - ZIP file extraction
-- **simple-git** - Git repository cloning
+## Development
 
-### Frontend
-- **React 18** - UI framework
-- **React Router** - Client-side routing
-- **Vite** - Build tool and dev server
-- **TypeScript** - Type safety
-- **axios** - HTTP client
-- **react-markdown** - Markdown rendering
-- **react-syntax-highlighter** - Code syntax highlighting
-- **react-hot-toast** - Toast notifications
-- **mermaid** - Diagram rendering
-- **marked** - Markdown to HTML conversion
-- **html2pdf.js** - PDF generation from HTML
-
-## 📡 API Endpoints
-
-### Backend API (Port 3001)
-
-#### `GET /api/health`
-Health check endpoint.
-
-**Response:**
-```json
-{
-  "status": "ok",
-  "message": "CodeToDocsAI Backend API is running",
-  "timestamp": "2025-10-07T..."
-}
+### Project Structure
+```
+├── backend/              # Express API server
+│   ├── src/
+│   │   ├── routes/      # API endpoints
+│   │   ├── services/    # Business logic
+│   │   ├── db/          # Database schema & migrations
+│   │   └── utils/       # Helper functions
+│   └── Dockerfile       # Production container
+├── frontend/            # React application
+│   ├── src/
+│   │   ├── pages/       # Route components
+│   │   ├── components/  # Reusable UI components
+│   │   ├── contexts/    # State management
+│   │   └── utils/       # Client-side utilities
+│   └── Dockerfile       # Nginx production container
+├── deploy-tagged.sh     # Full deployment script
+├── redeploy.sh          # Quick redeployment
+└── setup-database.sh    # Cloud SQL setup
 ```
 
-#### `POST /api/generate`
-Generate documentation for code with quality scoring and diagrams.
+### Available Scripts
 
-**Request Body:**
-```json
-{
-  "code": "function add(a, b) { return a + b; }",
-  "language": "javascript"
-}
-```
-
-**Response (Success):**
-```json
-{
-  "id": "a1b2c3d4e5f6g7h8",
-  "documentation": "# Overview\n\nThis function...",
-  "diagram": "flowchart TD\n  A[Start] --> B[Add]...",
-  "qualityScore": {
-    "score": 85,
-    "breakdown": {
-      "hasOverview": true,
-      "hasParameters": true,
-      "hasReturnValues": true,
-      "hasExamples": true,
-      "hasUsage": true,
-      "hasDependencies": false,
-      "hasNotes": true,
-      "codeBlocksCount": 2
-    }
-  },
-  "timestamp": "2025-10-07T..."
-}
-```
-
-#### `GET /api/documentation`
-Get all stored documentation entries.
-
-**Response:**
-```json
-{
-  "total": 5,
-  "stats": {
-    "entries": 5,
-    "maxSize": 20
-  },
-  "documentation": [...]
-}
-```
-
-#### `GET /api/documentation/:id`
-Get a specific documentation entry by ID.
-
-#### `DELETE /api/documentation/:id`
-Delete a specific documentation entry.
-
-#### `GET /api/stats`
-Get storage statistics.
-
-#### `POST /api/webhook/github`
-GitHub webhook endpoint for PR merge events (requires webhook secret).
-
-#### `POST /api/batch/start`
-Start batch processing of a GitHub repository URL.
-
-**Request Body:**
-```json
-{
-  "repoUrl": "https://github.com/owner/repo",
-  "options": {
-    "maxFiles": 50,
-    "maxFileSize": 100000,
-    "extensions": [".js", ".ts", ".py"]
-  }
-}
-```
-
-#### `POST /api/batch/upload-zip`
-Upload a zipped repository for batch processing (max 100MB).
-
-**Request:** Multipart form data with `zipFile` field
-
-#### `GET /api/batch/progress/:batchId`
-Get real-time progress of a batch processing job.
-
-#### `GET /api/batch/result/:batchId`
-Get the completed result of a batch job with full documentation.
-
-#### `POST /api/batch/generate-full-doc/:batchId`
-Generate comprehensive repository-level documentation from batch results.
-
-## ✨ Features
-
-### Current Features
-
-#### Core Functionality
-- ✅ **AI-Powered Documentation** - Uses Claude 3.5 Sonnet for comprehensive docs
-- ✅ **Multiple Languages** - JavaScript, Python, Java, TypeScript, Go, Rust, C++, and more
-- ✅ **Split View Layout** - Code input on left, documentation on right
-- ✅ **Real-time Generation** - Live documentation as you type
-- ✅ **Batch Processing** - Process entire repositories at once
-  - **GitHub URL Import** - Clone and document public repositories
-  - **ZIP Upload** - Upload zipped repositories (up to 100MB)
-  - **Real-time Progress** - Live progress tracking with percentage
-  - **File Filtering** - Configurable file limits, size limits, and extensions
-  - **Full Repo Documentation** - AI-generated repository overview and summary
-
-#### Visual Enhancements
-- ✅ **Syntax Highlighting** - VS Code Dark Plus theme for code blocks
-- ✅ **Markdown Rendering** - Full markdown support with rich formatting
-- ✅ **Mermaid Diagrams** - Automatic visual diagrams:
-  - Class diagrams for OOP code
-  - Flowcharts for functional code
-  - Dependency graphs for modules
-- ✅ **Collapsible Sections** - Expandable/collapsible diagram sections
-- ✅ **Dark Theme** - Modern slate/indigo/purple gradient design
-- ✅ **Responsive Design** - Works on desktop, tablet, and mobile
-
-#### Quality & Analysis
-- ✅ **Documentation Quality Score** - 0-100 score with breakdown:
-  - Overview/Description (15 points)
-  - Parameters/Inputs (20 points)
-  - Return Values (20 points)
-  - Examples & Code Blocks (25 points)
-  - Dependencies (10 points)
-  - Notes/Best Practices (10 points)
-- ✅ **Quality Labels** - Excellent, Good, Fair, Basic, Poor
-- ✅ **Color-Coded Scoring** - Green, Indigo, Yellow, Orange, Red
-- ✅ **Progress Bar Visualization** - Animated quality indicator
-
-#### Storage & History
-- ✅ **PostgreSQL Database** - Persistent storage with encryption
-- ✅ **History Page** - View all past documentation generations
-- ✅ **Documentation Tracking** - Timestamps, language tags, PR info
-- ✅ **Search & Filter** - Find documentation by language or source
-- ✅ **Delete Functionality** - Remove individual entries
-- ✅ **Batch History** - Track batch processing jobs with full repository docs
-- ✅ **Multi-user Support** - User-specific documentation with OAuth authentication
-
-#### GitHub Integration
-- ✅ **Webhook Handler** - Automatic documentation on PR merge
-- ✅ **PR Information Tracking** - Store PR number, repo, branch, author
-- ✅ **Signature Verification** - HMAC-SHA256 security
-- ✅ **Manual vs Webhook Indicators** - Visual distinction in history
-
-#### User Experience
-- ✅ **Settings Page** - Configure API keys and view webhook URL
-- ✅ **React Router** - Seamless navigation (Home, Batch, History, Settings)
-- ✅ **Copy to Clipboard** - One-click copy of documentation
-- ✅ **Clear Function** - Reset form with one click
-- ✅ **Character Counter** - Live character count for code input
-- ✅ **Toast Notifications** - Success/error feedback
-- ✅ **Loading States** - Visual feedback during generation
-- ✅ **Error Handling** - Comprehensive error messages
-- ✅ **localStorage Support** - Persistent API key storage
-
-#### Export & Download
-- ✅ **Multiple Export Formats** - Download documentation in various formats
-  - **Markdown (.md)** - Plain markdown with metadata header
-  - **HTML** - Beautiful styled HTML with embedded CSS
-  - **PDF** - Browser-native print-to-PDF with preserved styling
-- ✅ **Copy Functions** - Copy as Markdown or HTML to clipboard
-- ✅ **Metadata Inclusion** - All exports include generation date, language, quality score
-- ✅ **Batch Export** - Download full repository documentation
-- ✅ **Professional Styling** - PDFs match the CodeToDocs visual aesthetic
-
-## 🎯 Key Services
-
-### LLM Service (`llmService.ts`)
-- Parallel execution of documentation and diagram generation
-- Lazy client initialization to prevent env variable loading issues
-- Quality score calculation
-- Error handling and retry logic
-
-### Storage Service (`storageService.ts`)
-- PostgreSQL database with persistent storage
-- User-specific documentation with OAuth integration
-- Encrypted OAuth token storage
-- Support for documentation, diagrams, quality scores, and PR info
-- Batch documentation storage with full repository docs
-- Query by ID, user ID, or get all
-
-### Quality Score Service (`qualityScoreService.ts`)
-- Weighted scoring algorithm
-- Breakdown of documentation completeness
-- Label and color assignment
-- Configurable scoring criteria
-
-## 🐛 Troubleshooting
-
-### Backend won't start
-
-**Issue:** "ANTHROPIC_API_KEY is not configured"
-- **Solution:** Make sure `.env` file exists in `backend/` directory with valid API key
-
-**Issue:** Port 3001 already in use
-- **Solution:** Kill the process using port 3001 or change PORT in `.env`
-
-**Issue:** "Could not resolve authentication method"
-- **Solution:** This was caused by early initialization of the Anthropic client. Fixed by implementing lazy initialization with `getAnthropicClient()` function
-- **Solution:** Restart backend server after updating `.env`
-
-### Frontend won't start
-
-**Issue:** Dependencies not installed
-- **Solution:** Run `npm install` in frontend directory
-
-**Issue:** API calls failing
-- **Solution:** Ensure backend is running on port 3001
-
-**Issue:** Mermaid diagrams not rendering
-- **Solution:** Check browser console for errors, diagrams require valid Mermaid syntax
-
-### CORS errors
-
-**Issue:** CORS policy blocking requests
-- **Solution:** Verify `FRONTEND_URL` in backend `.env` matches frontend URL
-- **Solution:** Check that frontend is running on `http://localhost:5173`
-
-### GitHub Webhook Issues
-
-**Issue:** Webhook returns 401 Unauthorized
-- **Solution:** Verify `GITHUB_WEBHOOK_SECRET` matches GitHub webhook configuration
-- **Solution:** Check that request includes `X-Hub-Signature-256` header
-
-## 📝 Development Scripts
-
-### Root
 ```bash
-npm run dev              # Run both backend and frontend
+# Development
+npm run dev              # Start both frontend and backend
+npm run dev:backend      # Start backend only
+npm run dev:frontend     # Start frontend only
+
+# Production build
 npm run build            # Build all workspaces
-npm run dev:backend      # Run backend only
-npm run dev:frontend     # Run frontend only
-```
+cd backend && npm run build
+cd frontend && npm run build
 
-### Backend
-```bash
-npm run dev              # Start dev server with nodemon
-npm run build            # Compile TypeScript
-npm run start            # Run compiled code
-```
-
-### Frontend
-```bash
-npm run dev              # Start Vite dev server
-npm run build            # Build for production
-npm run preview          # Preview production build
-```
-
-## 🔧 Configuration
-
-### Environment Variables (Backend)
-
-| Variable | Required | Description |
-|----------|----------|-------------|
-| `PORT` | No | Backend server port (default: 3001) |
-| `NODE_ENV` | No | Environment (development/production) |
-| `FRONTEND_URL` | No | Frontend URL for CORS (default: http://localhost:5173) |
-| `ANTHROPIC_API_KEY` | **Yes** | Your Anthropic API key |
-| `GITHUB_WEBHOOK_SECRET` | No | Secret for GitHub webhook verification |
-| `GITHUB_TOKEN` | No | GitHub token for API access |
-| `GITHUB_CLIENT_ID` | No | GitHub OAuth client ID |
-| `GITHUB_CLIENT_SECRET` | No | GitHub OAuth client secret |
-| `SESSION_SECRET` | No | Session encryption secret |
-| `DATABASE_URL` | No | PostgreSQL connection string |
-| `DATABASE_ENCRYPTION_KEY` | No | 32-byte key for encrypting OAuth tokens |
-
-### Frontend Configuration
-
-- API calls are proxied through Vite to `/api` → `http://localhost:3001`
-- Settings stored in browser localStorage
-- Supports custom API provider selection (Claude/OpenAI, only Claude implemented)
-
-## 🔒 Security Notes
-
-- **Never commit `.env` files** - Already in `.gitignore`
-- **Keep API keys secret** - Don't share or expose them
-- **Use environment variables** - Never hardcode credentials
-- **Webhook signatures** - Verified using HMAC-SHA256
-- **Input validation** - All API endpoints validate request bodies
-
-## 📦 Building for Production
-
-### Local Build
-
-#### Backend
-```bash
+# Database
 cd backend
-npm run build
-npm start
+npm run db:generate      # Generate migrations
+npm run db:push          # Apply migrations
+npm run db:studio        # Open Drizzle Studio
 ```
 
-#### Frontend
-```bash
-cd frontend
-npm run build
-# Output in frontend/dist/
-```
+## Key Features Implementation
 
-### Google Cloud Platform Deployment
+### Quality Scoring System
+Documentation quality is evaluated using a weighted algorithm:
+- Overview/Description: 15 points
+- Parameters/Inputs: 20 points
+- Return Values/Outputs: 20 points
+- Examples & Code Blocks: 25 points
+- Dependencies: 10 points
+- Notes/Best Practices: 10 points
 
-CodeToDocsAI includes automated deployment scripts for Google Cloud Run.
+### Batch Processing
+- Concurrent file processing (3 files simultaneously)
+- Smart file filtering (excludes `node_modules`, build artifacts)
+- Progress tracking via WebSocket
+- Comprehensive repository overview generation
 
-#### Prerequisites
-- Google Cloud account with billing enabled
-- `gcloud` CLI installed ([Install Guide](https://cloud.google.com/sdk/docs/install))
-- Anthropic API key
+### GitHub Webhook Integration
+- HMAC-SHA256 signature verification
+- Smart token resolution (PR author → repo owner → deployment token)
+- Automatic documentation on PR merge events
+- PR metadata tracking (number, branch, author, repository)
 
-#### Quick Deployment
+## Security
 
-1. **Fix IAM permissions (first time only):**
-   ```bash
-   chmod +x fix-permissions.sh
-   ./fix-permissions.sh
-   ```
+- OAuth tokens encrypted at rest in PostgreSQL
+- Webhook signature verification required
+- Secrets stored in GCP Secret Manager
+- CORS configured for frontend/backend communication
+- Session management with secure cookies
+- Environment-based configuration (no hardcoded credentials)
 
-2. **Deploy to Cloud Run:**
-   ```bash
-   chmod +x deploy-gcp.sh
-   ./deploy-gcp.sh
-   ```
+## Performance
 
-The script will:
-- Set up your GCP project
-- Enable required APIs
-- Create secrets for your Anthropic API key
-- Deploy backend to Cloud Run
-- Deploy frontend to Cloud Run
-- Configure CORS automatically
+- Parallel AI requests for documentation and diagrams
+- LRU cache eviction strategy for memory management
+- Optimized Docker builds with multi-stage compilation
+- Auto-scaling Cloud Run instances based on traffic
+- Database connection pooling
 
-#### Deployment Files
-- `deploy-gcp.sh` - Automated deployment script
-- `fix-permissions.sh` - IAM permissions setup
-- `GCP_DEPLOYMENT_GUIDE.md` - Detailed manual deployment guide
-- `backend/Dockerfile` - Backend container configuration
-- `frontend/Dockerfile` - Frontend container with nginx
-- `backend/.dockerignore` - Files excluded from backend build
-- `frontend/.dockerignore` - Files excluded from frontend build
+## License
 
-#### Cloud Run Configuration
-- **Backend:**
-  - Memory: 1Gi
-  - CPU: 1
-  - Max instances: 10
-  - Timeout: 300s
-  - Port: 8080 (auto-configured)
+MIT License - See LICENSE file for details
 
-- **Frontend:**
-  - Memory: 512Mi
-  - CPU: 1
-  - Max instances: 5
-  - nginx server with dynamic port configuration
-  - Runtime environment variable injection
+## Contact
 
-#### Viewing Logs
-```bash
-# Backend logs
-gcloud run services logs read codetodocs-backend --region us-central1
+Ali Saleem - [GitHub](https://github.com/asaleem9)
 
-# Frontend logs
-gcloud run services logs read codetodocs-frontend --region us-central1
-```
-
-#### Cleanup
-```bash
-gcloud run services delete codetodocs-backend --region us-central1
-gcloud run services delete codetodocs-frontend --region us-central1
-gcloud secrets delete anthropic-api-key
-```
-
-See `GCP_DEPLOYMENT_GUIDE.md` for detailed manual deployment instructions and troubleshooting.
-
-## 🎨 Design System
-
-### Colors
-- **Background:** `#1e293b` to `#0f172a` gradient
-- **Primary:** `#818cf8` (Indigo)
-- **Secondary:** `#c084fc` (Purple)
-- **Success:** `#10b981` (Green)
-- **Warning:** `#fbbf24` (Yellow)
-- **Error:** `#ef4444` (Red)
-- **Text Primary:** `#e2e8f0`
-- **Text Secondary:** `#94a3b8`
-
-### Components
-- **Panels:** Glassmorphism with `backdrop-filter: blur(10px)`
-- **Buttons:** Gradient backgrounds with hover lift effects
-- **Cards:** Subtle borders with dark backgrounds
-- **Progress Bars:** Smooth animations with color transitions
-
-## 🚀 Future Enhancements
-
-Potential features for future development:
-- OpenAI integration (UI prepared)
-- Custom documentation templates
-- API documentation generation from OpenAPI specs
-- Code complexity analysis
-- SEO metadata generation
-- Multi-language support for UI
-- Private repository support with GitHub App
-- Scheduled documentation updates
-- Documentation versioning and diff tracking
-
-## 🤝 Contributing
-
-This is a personal project, but feel free to fork and modify!
-
-## 📄 License
-
-MIT License - feel free to use and modify as needed.
-
-## 🆘 Need Help?
-
-If you encounter issues:
-1. Check this README for troubleshooting steps
-2. Verify all dependencies are installed
-3. Ensure environment variables are set correctly
-4. Check that both servers are running
-5. Review browser console and terminal logs for errors
-
-## 📚 Session Notes for Future Development
-
-### Important Implementation Details
-
-1. **Anthropic Client Initialization**
-   - Uses lazy initialization pattern via `getAnthropicClient()` function
-   - This prevents "Could not resolve authentication method" errors
-   - Environment variables must be loaded before client creation
-
-2. **Parallel Processing**
-   - Documentation and diagram generation run in parallel using `Promise.all()`
-   - This improves response time by ~50%
-
-3. **Storage System**
-   - In-memory only (data lost on server restart)
-   - LRU eviction when exceeding 20 entries
-   - Consider adding persistent storage (database) for production
-
-4. **Quality Scoring**
-   - Weighted algorithm favors examples and code blocks
-   - Runs synchronously after documentation generation
-   - Could be optimized with caching for repeated analyses
-
-5. **Mermaid Diagrams**
-   - Claude sometimes returns diagrams with markdown code fences
-   - Backend strips ````mermaid` wrappers before sending to frontend
-   - Frontend re-renders on every selectedDoc change
-
-### Known Issues & Limitations
-
-- No rate limiting on API endpoints
-- OpenAI integration UI exists but not implemented
-- Large repositories may take significant time to process
-- Batch processing limited to 50 files by default (configurable)
-- ZIP uploads limited to 100MB
-
-### Development History
-
-**Major Milestones:**
-1. Initial project setup with Express + React
-2. Claude API integration
-3. Markdown rendering and syntax highlighting
-4. Settings page with API key management
-5. GitHub webhook handler
-6. In-memory storage system with LRU cache
-7. History page with documentation viewing
-8. Mermaid diagram generation
-9. Documentation quality scoring system (0-100 with weighted criteria)
-10. Demo mode with preloaded code samples
-11. Export functionality (Markdown/HTML download and copy)
-12. Batch processing with GitHub URL and ZIP upload support
-13. PostgreSQL database integration with user authentication
-14. Multi-format export (Markdown, HTML, PDF) with professional styling
-15. Real-time progress tracking for batch jobs
-
-### Latest Features (Session 2)
-
-**Demo Mode:**
-- 4 preloaded code samples (Python class, JavaScript function, Java method, TypeScript interface)
-- "Try Demo" button with dropdown menu
-- Auto-generates documentation when sample is loaded
-- Purple-themed UI to distinguish from other actions
-- Location: `frontend/src/data/demoSamples.ts`
-
-**Export Functionality:**
-- Download as Markdown (.md file with metadata header)
-- Download as HTML (beautifully styled with embedded CSS)
-- Copy as Markdown (with metadata)
-- Copy as HTML (converted from markdown)
-- Includes metadata: language, generation date, quality score, PR info
-- Uses `marked` library for markdown to HTML conversion
-- Professional HTML export with:
-  - Metadata section with blue accent
-  - Syntax-highlighted code blocks
-  - Responsive design
-  - Print-friendly layout
-- Location: `frontend/src/utils/exportUtils.ts`
-
-### Deployment Updates (Session 3)
-
-**Google Cloud Platform Support:**
-- Automated deployment script for Cloud Run
-- Multi-stage Docker builds for optimized containers
-- Runtime environment variable injection for frontend
-- Dynamic port configuration (Cloud Run PORT env var)
-- IAM permissions helper script
-- Comprehensive deployment documentation
-
-**TypeScript Fixes:**
-- Fixed NodeJS namespace issues (Batch.tsx)
-- Removed unused health check code (Home.tsx)
-- Type assertion fixes for API responses (webhook.ts)
-- Proper handling of Map iterator types (storageService.ts)
-- Readonly array conversion (graphqlParser.ts)
-
-**Docker Configuration:**
-- Backend: Node.js 20 Alpine with TypeScript build
-- Frontend: nginx Alpine with runtime env injection
-- Build-time vs runtime environment variables properly separated
-- Health checks and security best practices
-
-### Recent Changes
-
-**Dependencies Added:**
-- `marked` - Markdown to HTML conversion for exports
-- `mermaid` - Diagram rendering
-
-**New Deployment Files:**
-- `deploy-gcp.sh` - Automated GCP deployment script
-- `fix-permissions.sh` - IAM permissions setup for Cloud Build
-- `GCP_DEPLOYMENT_GUIDE.md` - Comprehensive deployment guide
-- `backend/Dockerfile` - Production-ready backend container
-- `frontend/Dockerfile` - nginx-based frontend with runtime config
-- `backend/.dockerignore` - Optimized Docker build context
-- `frontend/.dockerignore` - Optimized Docker build context
-- `frontend/nginx.conf` - Dynamic nginx configuration template
-
-**New Files:**
-- `frontend/src/data/demoSamples.ts` - Demo code samples
-- `frontend/src/utils/exportUtils.ts` - Export utilities
-- `frontend/src/components/QualityScore.tsx` - Quality score display component
-- `frontend/src/components/QualityScore.css` - Quality score styling
-- `backend/src/services/qualityScoreService.ts` - Quality analysis service
-
-**Modified Files:**
-- `frontend/src/pages/Home.tsx` - Demo mode, export functionality, removed health check
-- `frontend/src/pages/Batch.tsx` - Fixed NodeJS.Timeout type issue, added ZIP upload mode
-- `frontend/src/config.ts` - Runtime environment variable support
-- `backend/src/routes/webhook.ts` - Type assertion fixes
-- `backend/src/services/storageService.ts` - PostgreSQL integration, encryption
-- `backend/src/utils/graphqlParser.ts` - Readonly array handling
-- `frontend/src/App.css` - Added demo and export menu styling
-- All storage and LLM services updated to include quality scores and diagrams
-
-### Latest Features (Session 4)
-
-**Batch Processing Enhancements:**
-- **ZIP Upload Support** - Upload zipped repositories directly (up to 100MB)
-- **Dual Mode Processing** - Toggle between GitHub URL and ZIP upload
-- **Real-time Progress** - Live progress bars with percentage completion
-- **File Extraction** - Automatic ZIP extraction and file scanning
-- **Background Processing** - Non-blocking batch job execution
-- **Full Repository Documentation** - AI-generated comprehensive repo overview
-
-**Export System Improvements:**
-- **PDF Generation** - Browser-native print-to-PDF with preserved styling
-  - Professional gradient header with purple/indigo theme
-  - Styled metadata boxes with colored labels
-  - Code blocks with dark gradient backgrounds
-  - Colored headings and syntax highlighting
-  - Print-optimized CSS with color preservation
-- **HTML Export** - Beautifully styled standalone HTML files
-- **Markdown Export** - Clean markdown with metadata headers
-- **Batch Export** - Download full repository documentation
-
-**Database & Authentication:**
-- **PostgreSQL Integration** - Full database persistence replacing in-memory storage
-- **User Authentication** - GitHub OAuth integration
-- **Encrypted Storage** - OAuth tokens encrypted in database
-- **Multi-user Support** - User-specific documentation and history
-
-**Dependencies Added:**
-- `multer` - File upload middleware
-- `adm-zip` - ZIP file extraction
-- `html2pdf.js` - PDF generation
-- `pg` - PostgreSQL client
-- `bcrypt` - Password hashing (for encryption keys)
-
----
-
-**Last Updated:** October 2025 (Session 4 - Batch Processing & Export)
-**Claude Model:** claude-sonnet-4-5-20250929
-**Status:** ✅ Fully Functional with Database, Batch Processing, and Export Features
+Project Link: [https://github.com/asaleem9/CodeToDocs](https://github.com/asaleem9/CodeToDocs)

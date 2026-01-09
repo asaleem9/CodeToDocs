@@ -233,7 +233,7 @@ gcloud sql instances create codetodocs-db \
   --storage-size=10GB \
   --storage-auto-increase \
   --backup-start-time=03:00 \
-  --labels=project=hackathon25-codetodocsai
+  --labels=project=codetodocs
 
 # Create database
 gcloud sql databases create codetodocs \

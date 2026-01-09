@@ -61,15 +61,16 @@ steps:
       - '--set-secrets'
       - 'ANTHROPIC_API_KEY=anthropic-api-key:latest,FRONTEND_URL=frontend-url:latest'
       - '--memory'
-      - '1Gi'
+      - '512Mi'
       - '--cpu'
       - '1'
       - '--max-instances'
-      - '10'
+      - '3'
       - '--min-instances'
       - '0'
       - '--timeout'
       - '300'
+      - '--cpu-throttling'
     waitFor: ['push-backend']
 
   # Deploy frontend to Cloud Run
@@ -90,13 +91,16 @@ steps:
       - '--set-env-vars'
       - 'VITE_API_URL=https://codetodocs-backend-${_CLOUD_RUN_REGION}.a.run.app'
       - '--memory'
-      - '512Mi'
+      - '256Mi'
       - '--cpu'
       - '1'
       - '--max-instances'
-      - '5'
+      - '2'
       - '--min-instances'
       - '0'
+      - '--timeout'
+      - '300'
+      - '--cpu-throttling'
     waitFor: ['push-frontend', 'deploy-backend']
 
 # Images to push to Container Registry
@@ -115,5 +119,5 @@ timeout: 1200s
 
 # Build options
 options:
-  machineType: 'E2_HIGHCPU_8'
+  machineType: 'E2_HIGHCPU_8'  # Can use 'N1_HIGHCPU_8' or remove for default to save costs
   logging: CLOUD_LOGGING_ONLY

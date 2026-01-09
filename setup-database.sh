@@ -16,6 +16,19 @@ echo -e "${BLUE}========================================${NC}"
 echo -e "${BLUE}  CodeToDocsAI - Database Setup${NC}"
 echo -e "${BLUE}========================================${NC}\n"
 
+echo -e "${YELLOW}⚠️  COST WARNING:${NC}"
+echo -e "${YELLOW}Cloud SQL is NOT free tier eligible!${NC}"
+echo -e "${YELLOW}Estimated cost: ~$7-10/month (db-f1-micro)${NC}"
+echo -e "${YELLOW}For free tier usage, skip database setup.${NC}"
+echo -e "${YELLOW}The app works without database (uses in-memory storage).${NC}\n"
+
+read -p "Do you want to continue with database setup? (y/N): " CONTINUE_DB
+if [[ ! $CONTINUE_DB =~ ^[Yy]$ ]]; then
+    echo -e "${GREEN}Skipping database setup. Your app will use in-memory storage.${NC}"
+    exit 0
+fi
+echo ""
+
 # Check if gcloud is installed
 if ! command -v gcloud &> /dev/null; then
     echo -e "${RED}Error: gcloud CLI is not installed${NC}"
@@ -126,13 +139,13 @@ SECRET_NAME="codetodocs-database-url"
 if gcloud secrets describe $SECRET_NAME --project=$PROJECT_ID &> /dev/null; then
     echo -e "${YELLOW}Updating DATABASE_URL secret...${NC}"
     echo -n "$DB_URL" | gcloud secrets versions add $SECRET_NAME --data-file=- --project=$PROJECT_ID
-    gcloud secrets update $SECRET_NAME --update-labels="project=hackathon25-codetodocsai" --project=$PROJECT_ID
+    gcloud secrets update $SECRET_NAME --update-labels="project=codetodocs" --project=$PROJECT_ID
 else
     echo -e "${YELLOW}Creating DATABASE_URL secret...${NC}"
     echo -n "$DB_URL" | gcloud secrets create $SECRET_NAME \
       --data-file=- \
       --replication-policy="automatic" \
-      --labels="project=hackathon25-codetodocsai" \
+      --labels="project=codetodocs" \
       --project=$PROJECT_ID
 fi
 

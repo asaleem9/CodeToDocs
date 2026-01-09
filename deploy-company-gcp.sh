@@ -163,11 +163,12 @@ gcloud run deploy $BACKEND_SERVICE \
   --allow-unauthenticated \
   --set-env-vars "NODE_ENV=production,PORT=8080" \
   --set-secrets "ANTHROPIC_API_KEY=${SECRET_NAME}:latest,GITHUB_CLIENT_ID=${GITHUB_CLIENT_ID_SECRET}:latest,GITHUB_CLIENT_SECRET=${GITHUB_CLIENT_SECRET_SECRET}:latest,SESSION_SECRET=${SESSION_SECRET_NAME}:latest" \
-  --memory 1Gi \
+  --memory 512Mi \
   --cpu 1 \
-  --max-instances 10 \
+  --max-instances 3 \
   --min-instances 0 \
   --timeout 300 \
+  --cpu-throttling \
   --quiet
 
 BACKEND_URL=$(gcloud run services describe $BACKEND_SERVICE --region $REGION --format 'value(status.url)')
@@ -186,10 +187,12 @@ gcloud run deploy $FRONTEND_SERVICE \
   --platform managed \
   --allow-unauthenticated \
   --set-env-vars "VITE_API_URL=$BACKEND_URL" \
-  --memory 512Mi \
+  --memory 256Mi \
   --cpu 1 \
-  --max-instances 5 \
+  --max-instances 2 \
   --min-instances 0 \
+  --timeout 300 \
+  --cpu-throttling \
   --quiet
 
 FRONTEND_URL=$(gcloud run services describe $FRONTEND_SERVICE --region $REGION --format 'value(status.url)')

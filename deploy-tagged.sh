@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # CodeToDocsAI - Tagged GCP Deployment Script
-# All resources tagged with: hackathon25-codetodocsai
+# All resources tagged with: codetodocs
 
 set -e  # Exit on error
 
@@ -14,7 +14,7 @@ NC='\033[0m' # No Color
 
 echo -e "${BLUE}========================================${NC}"
 echo -e "${BLUE}  CodeToDocsAI - Tagged GCP Deployment${NC}"
-echo -e "${BLUE}  Tag: hackathon25-codetodocsai${NC}"
+echo -e "${BLUE}  Tag: codetodocs${NC}"
 echo -e "${BLUE}========================================${NC}\n"
 
 # Check if gcloud is installed
@@ -41,7 +41,7 @@ echo -e "${GREEN}✓ Using region: $REGION${NC}\n"
 
 # Tag to apply to all resources
 TAG_KEY="project"
-TAG_VALUE="hackathon25-codetodocsai"
+TAG_VALUE="codetodocs"
 
 echo -e "${YELLOW}Step 1: Verifying APIs are enabled${NC}"
 gcloud services enable cloudbuild.googleapis.com \
@@ -229,11 +229,12 @@ if [ -n "$CLOUD_SQL_INSTANCE" ]; then
       --set-env-vars "NODE_ENV=production" \
       --set-secrets "$BACKEND_SECRETS" \
       --update-labels="${TAG_KEY}=${TAG_VALUE}" \
-      --memory 1Gi \
+      --memory 512Mi \
       --cpu 1 \
-      --max-instances 10 \
+      --max-instances 3 \
       --min-instances 0 \
       --timeout 300 \
+      --cpu-throttling \
       $CLOUD_SQL_INSTANCE \
       --project=$PROJECT_ID
 else
@@ -246,11 +247,12 @@ else
       --set-env-vars "NODE_ENV=production" \
       --set-secrets "$BACKEND_SECRETS" \
       --update-labels="${TAG_KEY}=${TAG_VALUE}" \
-      --memory 1Gi \
+      --memory 512Mi \
       --cpu 1 \
-      --max-instances 10 \
+      --max-instances 3 \
       --min-instances 0 \
       --timeout 300 \
+      --cpu-throttling \
       --project=$PROJECT_ID
 fi
 
@@ -271,10 +273,12 @@ gcloud run deploy codetodocs-frontend \
   --allow-unauthenticated \
   --set-env-vars "VITE_API_URL=$BACKEND_URL" \
   --update-labels="${TAG_KEY}=${TAG_VALUE}" \
-  --memory 512Mi \
+  --memory 256Mi \
   --cpu 1 \
-  --max-instances 5 \
+  --max-instances 2 \
   --min-instances 0 \
+  --timeout 300 \
+  --cpu-throttling \
   --project=$PROJECT_ID \
   --quiet
 
@@ -306,8 +310,8 @@ echo -e "  Frontend: ${GREEN}$FRONTEND_URL${NC}"
 echo -e "  Backend:  ${GREEN}$BACKEND_URL${NC}\n"
 
 echo -e "${YELLOW}To view tagged resources:${NC}"
-echo "  gcloud run services list --project=$PROJECT_ID --filter='metadata.labels.project=hackathon25-codetodocsai'"
-echo "  gcloud secrets list --project=$PROJECT_ID --filter='labels.project=hackathon25-codetodocsai'"
+echo "  gcloud run services list --project=$PROJECT_ID --filter='metadata.labels.project=codetodocs'"
+echo "  gcloud secrets list --project=$PROJECT_ID --filter='labels.project=codetodocs'"
 
 echo -e "\n${YELLOW}To view logs:${NC}"
 echo "  gcloud run services logs read codetodocs-backend --region $REGION --project $PROJECT_ID"

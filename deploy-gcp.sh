@@ -125,11 +125,12 @@ gcloud run deploy codetodocs-backend \
   --allow-unauthenticated \
   --set-env-vars "NODE_ENV=production,PORT=8080" \
   --set-secrets "ANTHROPIC_API_KEY=anthropic-api-key:latest,GITHUB_CLIENT_ID=github-client-id:latest,GITHUB_CLIENT_SECRET=github-client-secret:latest,SESSION_SECRET=session-secret:latest" \
-  --memory 1Gi \
+  --memory 512Mi \
   --cpu 1 \
-  --max-instances 10 \
+  --max-instances 3 \
   --min-instances 0 \
   --timeout 300 \
+  --cpu-throttling \
   --quiet
 
 BACKEND_URL=$(gcloud run services describe codetodocs-backend --region $REGION --format 'value(status.url)')
@@ -147,10 +148,12 @@ gcloud run deploy codetodocs-frontend \
   --platform managed \
   --allow-unauthenticated \
   --set-env-vars "VITE_API_URL=$BACKEND_URL" \
-  --memory 512Mi \
+  --memory 256Mi \
   --cpu 1 \
-  --max-instances 5 \
+  --max-instances 2 \
   --min-instances 0 \
+  --timeout 300 \
+  --cpu-throttling \
   --quiet
 
 FRONTEND_URL=$(gcloud run services describe codetodocs-frontend --region $REGION --format 'value(status.url)')

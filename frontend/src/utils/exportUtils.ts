@@ -1,5 +1,4 @@
 import { marked } from 'marked';
-import html2pdf from 'html2pdf.js';
 
 export interface ExportMetadata {
   language: string;
@@ -95,7 +94,7 @@ export async function copyAsHTML(
 export async function downloadAsPDF(
   documentation: string,
   metadata: ExportMetadata,
-  filename?: string
+  _filename?: string
 ): Promise<void> {
   // Convert markdown to HTML
   const htmlContent = await marked(documentation);

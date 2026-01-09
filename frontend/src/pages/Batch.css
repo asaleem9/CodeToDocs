@@ -91,6 +91,109 @@
   font-size: 0.875rem;
 }
 
+/* Mode selector */
+.mode-selector {
+  display: flex;
+  gap: 1rem;
+  margin-bottom: 2rem;
+  justify-content: center;
+}
+
+.mode-btn {
+  flex: 1;
+  max-width: 250px;
+  padding: 1rem 2rem;
+  background: rgba(15, 23, 42, 0.5);
+  border: 2px solid rgba(129, 140, 248, 0.2);
+  border-radius: 12px;
+  color: #94a3b8;
+  font-size: 1rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.3s;
+}
+
+.mode-btn:hover:not(:disabled) {
+  border-color: #818cf8;
+  color: #e2e8f0;
+  transform: translateY(-2px);
+}
+
+.mode-btn.active {
+  background: linear-gradient(135deg, #818cf8 0%, #c084fc 100%);
+  border-color: transparent;
+  color: white;
+  box-shadow: 0 4px 20px rgba(129, 140, 248, 0.4);
+}
+
+.mode-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* File upload area */
+.file-upload-area {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
+  padding: 2rem;
+  background: rgba(15, 23, 42, 0.5);
+  border: 2px dashed rgba(129, 140, 248, 0.3);
+  border-radius: 12px;
+  transition: all 0.3s;
+}
+
+.file-upload-area:hover {
+  border-color: #818cf8;
+  background: rgba(15, 23, 42, 0.7);
+}
+
+.file-select-btn {
+  padding: 0.75rem 2rem;
+  background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);
+  border: none;
+  border-radius: 8px;
+  color: white;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.3s;
+}
+
+.file-select-btn:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(79, 70, 229, 0.4);
+}
+
+.file-select-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.selected-file-info {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.file-name {
+  color: #e2e8f0;
+  font-weight: 500;
+  font-size: 1rem;
+}
+
+.file-size {
+  color: #94a3b8;
+  font-size: 0.875rem;
+}
+
+.file-hint {
+  color: #94a3b8;
+  font-size: 0.875rem;
+  margin: 0;
+}
+
 .button-group {
   display: flex;
   gap: 1rem;
@@ -252,6 +355,44 @@
 .download-full-doc-btn:hover {
   transform: translateY(-2px);
   box-shadow: 0 10px 25px rgba(192, 132, 252, 0.3);
+}
+
+.download-html-btn {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1.5rem;
+  background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.download-html-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 25px rgba(245, 158, 11, 0.3);
+}
+
+.download-pdf-btn {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1.5rem;
+  background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.download-pdf-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 25px rgba(239, 68, 68, 0.3);
 }
 
 .download-all-btn {

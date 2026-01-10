@@ -1,5 +1,19 @@
 # CodeToDocsAI
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+![Version](https://img.shields.io/badge/version-1.0.0-blue)
+![GitHub stars](https://img.shields.io/github/stars/asaleem9/CodeToDocs?style=social)
+![GitHub forks](https://img.shields.io/github/forks/asaleem9/CodeToDocs?style=social)
+![GitHub last commit](https://img.shields.io/github/last-commit/asaleem9/CodeToDocs)
+[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](http://makeapullrequest.com)
+
+[![TypeScript](https://img.shields.io/badge/TypeScript-007ACC?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
+[![React](https://img.shields.io/badge/React-20232A?logo=react&logoColor=61DAFB)](https://reactjs.org/)
+[![Node.js](https://img.shields.io/badge/Node.js-18+-339933?logo=node.js&logoColor=white)](https://nodejs.org/)
+[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-316192?logo=postgresql&logoColor=white)](https://www.postgresql.org/)
+[![Google Cloud](https://img.shields.io/badge/Google%20Cloud-4285F4?logo=google-cloud&logoColor=white)](https://cloud.google.com/)
+[![Express.js](https://img.shields.io/badge/Express.js-000000?logo=express&logoColor=white)](https://expressjs.com/)
+
 An intelligent documentation generator that transforms source code into comprehensive, production-ready documentation with visual diagrams and quality analysis.
 
 ## Live Demo

@@ -354,14 +354,14 @@ function Batch() {
               onClick={() => setUploadMode('url')}
               disabled={isProcessing}
             >
-              📡 GitHub URL
+              GitHub URL
             </button>
             <button
               className={`mode-btn ${uploadMode === 'zip' ? 'active' : ''}`}
               onClick={() => setUploadMode('zip')}
               disabled={isProcessing}
             >
-              📦 Upload ZIP
+              Upload ZIP
             </button>
           </div>
 
@@ -397,7 +397,7 @@ function Batch() {
                   onClick={() => fileInputRef.current?.click()}
                   disabled={isProcessing}
                 >
-                  {selectedFile ? '✓ Change File' : '📁 Select ZIP File'}
+                  {selectedFile ? '+ Change File' : 'Select ZIP File'}
                 </button>
                 {selectedFile && (
                   <div className="selected-file-info">
@@ -555,7 +555,7 @@ function Batch() {
                         onClick={() => setSelectedDoc(null)}
                       >
                         <div className="doc-item-header">
-                          <span className="doc-status">📘</span>
+                          <span className="doc-status">*</span>
                           <span className="doc-name">Full Repository Documentation</span>
                         </div>
                         <div className="doc-item-path">Complete project overview</div>
@@ -569,7 +569,7 @@ function Batch() {
                       >
                         <div className="doc-item-header">
                           <span className="doc-status">
-                            {doc.success ? '✅' : '❌'}
+                            {doc.success ? '+' : '-'}
                           </span>
                           <span className="doc-name">{doc.filePath.split('/').pop()}</span>
                         </div>
@@ -629,7 +629,7 @@ function Batch() {
                 ) : result.fullRepoDocumentation ? (
                   <div className="document-view full-repo-view">
                     <div className="document-header">
-                      <h2>📘 Full Repository Documentation</h2>
+                      <h2>Full Repository Documentation</h2>
                       <span className="language-tag">Complete Overview</span>
                     </div>
                     <div className="markdown-content">
@@ -684,27 +684,22 @@ function Batch() {
 
             <div className="features-grid">
               <div className="feature">
-                <span className="feature-icon">📦</span>
                 <h4>ZIP Upload</h4>
                 <p>Upload a zipped repository directly for processing</p>
               </div>
               <div className="feature">
-                <span className="feature-icon">📁</span>
                 <h4>Auto-Detection</h4>
                 <p>Automatically detects code files in supported languages</p>
               </div>
               <div className="feature">
-                <span className="feature-icon">📊</span>
                 <h4>Progress Tracking</h4>
                 <p>Real-time progress updates and file-by-file status</p>
               </div>
               <div className="feature">
-                <span className="feature-icon">📋</span>
                 <h4>Table of Contents</h4>
                 <p>Organized documentation with navigation</p>
               </div>
               <div className="feature">
-                <span className="feature-icon">💾</span>
                 <h4>Download All</h4>
                 <p>Export complete documentation as Markdown</p>
               </div>

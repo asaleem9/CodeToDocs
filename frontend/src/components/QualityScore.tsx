@@ -30,7 +30,7 @@ function getQualityLabel(score: number): string {
 
 function getQualityColor(score: number): string {
   if (score >= 90) return '#10b981' // green
-  if (score >= 75) return '#818cf8' // indigo
+  if (score >= 75) return '#e0e7ff' // cool white
   if (score >= 60) return '#fbbf24' // yellow
   if (score >= 40) return '#fb923c' // orange
   return '#ef4444' // red

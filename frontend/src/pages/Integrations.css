@@ -1,6 +1,6 @@
 .integrations-page {
   min-height: calc(100vh - 60px);
-  background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+  background: var(--bg-base);
   padding: 2rem;
 }
 
@@ -16,16 +16,14 @@
 
 .integrations-header h1 {
   font-size: 2.5rem;
-  background: linear-gradient(135deg, #818cf8 0%, #c084fc 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
+  color: var(--text-primary);
+  font-family: var(--font-mono);
   margin-bottom: 0.5rem;
 }
 
 .integrations-subtitle {
   font-size: 1.125rem;
-  color: #94a3b8;
+  color: var(--text-muted);
 }
 
 .integrations-content {
@@ -42,26 +40,22 @@
 }
 
 .integration-card {
-  background: rgba(30, 41, 59, 0.5);
-  backdrop-filter: blur(10px);
-  border: 2px solid rgba(129, 140, 248, 0.1);
-  border-radius: 16px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-default);
+  border-radius: 6px;
   padding: 2rem;
   cursor: pointer;
-  transition: all 0.3s;
+  transition: border-color 0.15s;
   text-align: center;
 }
 
 .integration-card:hover {
-  border-color: rgba(129, 140, 248, 0.3);
-  transform: translateY(-4px);
-  box-shadow: 0 10px 30px rgba(129, 140, 248, 0.2);
+  border-color: var(--border-hover);
 }
 
 .integration-card.active {
-  border-color: var(--integration-color, #818cf8);
-  background: rgba(129, 140, 248, 0.1);
-  box-shadow: 0 0 30px rgba(129, 140, 248, 0.3);
+  border-color: var(--teal);
+  background: rgba(45, 212, 191, 0.06);
 }
 
 .integration-icon {
@@ -71,21 +65,21 @@
 
 .integration-card h3 {
   margin: 0.5rem 0;
-  color: #e2e8f0;
+  color: var(--text-primary);
   font-size: 1.25rem;
+  font-family: var(--font-mono);
 }
 
 .integration-card p {
   margin: 0;
-  color: #94a3b8;
+  color: var(--text-muted);
   font-size: 0.875rem;
 }
 
 .integration-config {
-  background: rgba(30, 41, 59, 0.5);
-  backdrop-filter: blur(10px);
-  border: 1px solid rgba(129, 140, 248, 0.1);
-  border-radius: 16px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-default);
+  border-radius: 6px;
   padding: 2rem;
   overflow-y: auto;
   max-height: 800px;
@@ -94,14 +88,15 @@
 
 .integration-config h2 {
   margin-top: 0;
-  color: #e2e8f0;
+  color: var(--text-primary);
   margin-bottom: 2rem;
+  font-family: var(--font-mono);
 }
 
 .config-section {
   margin-bottom: 2rem;
   padding-bottom: 2rem;
-  border-bottom: 1px solid rgba(129, 140, 248, 0.1);
+  border-bottom: 1px solid var(--border-default);
 }
 
 .config-section:last-of-type {
@@ -109,11 +104,12 @@
 }
 
 .config-section h3 {
-  color: #94a3b8;
+  color: var(--text-muted);
   font-size: 0.875rem;
   text-transform: uppercase;
   letter-spacing: 0.05em;
   margin-bottom: 1rem;
+  font-family: var(--font-mono);
 }
 
 .input-group {
@@ -124,12 +120,13 @@
   display: block;
   font-weight: 500;
   margin-bottom: 0.5rem;
-  color: #e2e8f0;
+  color: var(--text-primary);
   font-size: 0.875rem;
+  font-family: var(--font-mono);
 }
 
 .required {
-  color: #f87171;
+  color: var(--error);
   margin-left: 0.25rem;
 }
 
@@ -137,85 +134,87 @@
 .config-textarea {
   width: 100%;
   padding: 0.75rem 1rem;
-  background: rgba(15, 23, 42, 0.5);
-  border: 1px solid rgba(129, 140, 248, 0.2);
-  border-radius: 8px;
-  color: #e2e8f0;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-default);
+  border-radius: 4px;
+  color: var(--text-primary);
   font-size: 0.875rem;
-  transition: all 0.2s;
+  transition: border-color 0.15s;
   font-family: inherit;
 }
 
 .config-textarea {
-  font-family: 'Fira Code', 'Monaco', 'Courier New', monospace;
+  font-family: var(--font-mono);
   resize: vertical;
 }
 
 .config-input:focus,
 .config-textarea:focus {
   outline: none;
-  border-color: #818cf8;
-  box-shadow: 0 0 0 3px rgba(129, 140, 248, 0.1);
+  border-color: var(--teal);
 }
 
 .export-btn {
   width: 100%;
   padding: 1rem;
-  background: linear-gradient(135deg, #818cf8 0%, #6366f1 100%);
-  color: white;
-  border: none;
-  border-radius: 8px;
+  background: rgba(45, 212, 191, 0.1);
+  color: var(--teal);
+  border: 1px solid rgba(45, 212, 191, 0.25);
+  border-radius: 4px;
   font-weight: 600;
   font-size: 1rem;
+  font-family: var(--font-mono);
   cursor: pointer;
-  transition: all 0.2s;
+  transition: all 0.15s;
   margin-bottom: 2rem;
 }
 
 .export-btn:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 10px 25px rgba(129, 140, 248, 0.3);
+  border-color: var(--teal);
+  background: rgba(45, 212, 191, 0.18);
 }
 
 .integration-help {
-  background: rgba(59, 130, 246, 0.05);
-  border: 1px solid rgba(59, 130, 246, 0.2);
-  border-radius: 8px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-default);
+  border-radius: 4px;
   padding: 1.5rem;
 }
 
 .integration-help h4 {
   margin-top: 0;
-  color: #93c5fd;
+  color: var(--text-secondary);
   font-size: 0.875rem;
   margin-bottom: 1rem;
+  font-family: var(--font-mono);
 }
 
 .integration-help ul {
   margin: 0;
   padding-left: 1.5rem;
-  color: #94a3b8;
+  color: var(--text-muted);
   line-height: 1.8;
   font-size: 0.875rem;
 }
 
 .integration-help a {
-  color: #60a5fa;
+  color: var(--accent);
   text-decoration: none;
-  transition: color 0.2s;
+  transition: color 0.15s;
 }
 
 .integration-help a:hover {
-  color: #93c5fd;
+  color: var(--accent-hover);
   text-decoration: underline;
 }
 
 .integration-help code {
-  background: rgba(129, 140, 248, 0.1);
+  background: var(--accent-muted);
   padding: 0.125rem 0.375rem;
   border-radius: 4px;
   font-size: 0.8125rem;
-  color: #a5b4fc;
+  color: var(--accent);
+  font-family: var(--font-mono);
 }
 
 .integration-placeholder {
@@ -225,7 +224,7 @@
   justify-content: center;
   height: 100%;
   min-height: 400px;
-  color: #64748b;
+  color: var(--text-muted);
   text-align: center;
 }
 
@@ -235,12 +234,13 @@
 }
 
 .integration-placeholder h3 {
-  color: #94a3b8;
+  color: var(--text-secondary);
   margin-bottom: 0.5rem;
+  font-family: var(--font-mono);
 }
 
 .integration-placeholder p {
-  color: #64748b;
+  color: var(--text-muted);
 }
 
 @keyframes fadeInRight {

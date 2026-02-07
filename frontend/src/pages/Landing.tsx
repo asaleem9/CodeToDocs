@@ -1,5 +1,4 @@
 import { Link } from 'react-router-dom'
-import Logo3D from '../components/Logo3D'
 import Logo from '../components/Logo'
 import './Landing.css'
 
@@ -9,7 +8,7 @@ function Landing() {
       {/* Hero Section */}
       <section className="hero">
         <div className="hero-content">
-          <Logo3D size="large" autoRotate={true} />
+          <Logo size="large" />
           <h1 className="hero-title">
             Transform Your Code into Beautiful Documentation
           </h1>
@@ -75,7 +74,6 @@ function Landing() {
 
           <div className="benefits-grid">
             <div className="benefit-card">
-              <div className="benefit-icon">⚡</div>
               <h3>180x Faster</h3>
               <p>
                 From 15-30 minutes per file to 5-10 seconds. Stop writing documentation,
@@ -85,7 +83,6 @@ function Landing() {
             </div>
 
             <div className="benefit-card">
-              <div className="benefit-icon">🔄</div>
               <h3>Zero Extra Steps</h3>
               <p>
                 Merge a PR, get documentation. No copy-pasting to ChatGPT, no manual
@@ -95,7 +92,6 @@ function Landing() {
             </div>
 
             <div className="benefit-card">
-              <div className="benefit-icon">👥</div>
               <h3>Onboard in Hours, Not Weeks</h3>
               <p>
                 New developers understand your codebase immediately with visual diagrams,
@@ -105,7 +101,6 @@ function Landing() {
             </div>
 
             <div className="benefit-card">
-              <div className="benefit-icon">✨</div>
               <h3>Consistent Quality</h3>
               <p>
                 Every piece of documentation scored 0-100 for completeness. Same high
@@ -115,7 +110,6 @@ function Landing() {
             </div>
 
             <div className="benefit-card">
-              <div className="benefit-icon">📊</div>
               <h3>Visual Architecture</h3>
               <p>
                 Auto-generated Mermaid diagrams for every file. See code flow,
@@ -125,7 +119,6 @@ function Landing() {
             </div>
 
             <div className="benefit-card">
-              <div className="benefit-icon">🎯</div>
               <h3>Knowledge Retention</h3>
               <p>
                 When developers leave, their knowledge stays. Every merged PR creates
@@ -147,7 +140,6 @@ function Landing() {
 
           <div className="benefits-grid">
             <div className="benefit-card">
-              <div className="benefit-icon">📄</div>
               <h3>Single File Documentation</h3>
               <p>
                 Paste code or upload files to generate instant documentation with
@@ -157,7 +149,6 @@ function Landing() {
             </div>
 
             <div className="benefit-card">
-              <div className="benefit-icon">📦</div>
               <h3>Batch Repository Processing</h3>
               <p>
                 Document entire GitHub repositories at once. Processes up to 50 files
@@ -167,7 +158,6 @@ function Landing() {
             </div>
 
             <div className="benefit-card">
-              <div className="benefit-icon">🔔</div>
               <h3>GitHub Webhook Integration</h3>
               <p>
                 Automatically document every merged PR. Set it once, and documentation
@@ -177,7 +167,6 @@ function Landing() {
             </div>
 
             <div className="benefit-card">
-              <div className="benefit-icon">🔍</div>
               <h3>Quality Scoring System</h3>
               <p>
                 Every document scored 0-100 for completeness. Ensures consistent
@@ -187,7 +176,6 @@ function Landing() {
             </div>
 
             <div className="benefit-card">
-              <div className="benefit-icon">🎨</div>
               <h3>Visual Mermaid Diagrams</h3>
               <p>
                 Auto-generated flowcharts and architecture diagrams for every file.
@@ -197,7 +185,6 @@ function Landing() {
             </div>
 
             <div className="benefit-card">
-              <div className="benefit-icon">📚</div>
               <h3>Documentation History</h3>
               <p>
                 Track all generated documentation with timestamps, quality scores,
@@ -283,22 +270,19 @@ function Landing() {
             <div className="webhook-diagram">
               <div className="diagram-box">
                 <div className="diagram-item">
-                  <span className="diagram-icon">🔀</span>
-                  <span>PR Merged</span>
+                  <span className="diagram-icon">PR Merged</span>
                 </div>
                 <div className="diagram-arrow">↓</div>
                 <div className="diagram-item">
-                  <span className="diagram-icon">🔔</span>
-                  <span>GitHub Webhook</span>
+                  <span className="diagram-icon">Webhook</span>
                 </div>
                 <div className="diagram-arrow">↓</div>
                 <div className="diagram-item">
-                  <span className="diagram-icon">🤖</span>
-                  <span>CodeToDocsAI</span>
+                  <span className="diagram-icon">Process</span>
                 </div>
                 <div className="diagram-arrow">↓</div>
                 <div className="diagram-item">
-                  <span className="diagram-icon">📚</span>
+                  <span className="diagram-icon">Docs</span>
                   <span>Documentation Generated</span>
                 </div>
               </div>
@@ -349,7 +333,7 @@ function Landing() {
           </div>
         </div>
         <div className="footer-bottom">
-          <p>&copy; 2025 CodeToDocsAI</p>
+          <p>&copy; 2025 CodeToDocs</p>
         </div>
       </footer>
     </div>

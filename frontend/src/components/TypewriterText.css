@@ -1,13 +1,13 @@
 .typewriter-text {
   display: inline-block;
-  font-family: 'Fira Code', 'Monaco', 'Courier New', monospace;
+  font-family: var(--font-mono);
 }
 
 .typewriter-cursor {
   display: inline-block;
   margin-left: 2px;
   animation: blink 1s step-end infinite;
-  color: #818cf8;
+  color: var(--accent);
 }
 
 @keyframes blink {

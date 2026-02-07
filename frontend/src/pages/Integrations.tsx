@@ -36,7 +36,7 @@ function Integrations() {
     {
       id: 'notion',
       name: 'Notion',
-      icon: '📝',
+      icon: 'N',
       description: 'Export documentation to Notion pages',
       color: '#000000',
       fields: [
@@ -48,7 +48,7 @@ function Integrations() {
     {
       id: 'confluence',
       name: 'Confluence',
-      icon: '🌊',
+      icon: 'C',
       description: 'Publish to Atlassian Confluence',
       color: '#0052CC',
       fields: [
@@ -62,7 +62,7 @@ function Integrations() {
     {
       id: 'github-wiki',
       name: 'GitHub Wiki',
-      icon: '📚',
+      icon: 'G',
       description: 'Sync to GitHub repository wiki',
       color: '#181717',
       fields: [
@@ -74,7 +74,7 @@ function Integrations() {
     {
       id: 'readme',
       name: 'README Generator',
-      icon: '📄',
+      icon: 'R',
       description: 'Generate and update README.md files',
       color: '#4CAF50',
       fields: [
@@ -86,7 +86,7 @@ function Integrations() {
     {
       id: 'slack',
       name: 'Slack',
-      icon: '💬',
+      icon: 'S',
       description: 'Send notifications to Slack',
       color: '#4A154B',
       fields: [
@@ -280,7 +280,7 @@ function Integrations() {
               </button>
 
               <div className="integration-help">
-                <h4>📖 How to get credentials:</h4>
+                <h4>How to get credentials:</h4>
                 {selectedIntegration === 'notion' && (
                   <ul>
                     <li>Go to <a href="https://www.notion.so/my-integrations" target="_blank" rel="noopener noreferrer">My Integrations</a></li>

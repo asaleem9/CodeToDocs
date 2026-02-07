@@ -28,13 +28,13 @@ mermaid.initialize({
   theme: 'dark',
   themeVariables: {
     darkMode: true,
-    background: '#1e293b',
-    primaryColor: '#818cf8',
-    primaryTextColor: '#e2e8f0',
-    primaryBorderColor: '#475569',
-    lineColor: '#94a3b8',
-    secondaryColor: '#c084fc',
-    tertiaryColor: '#0f172a',
+    background: '#111113',
+    primaryColor: '#e0e7ff',
+    primaryTextColor: '#fafafa',
+    primaryBorderColor: '#27272a',
+    lineColor: '#a1a1aa',
+    secondaryColor: '#a5b4fc',
+    tertiaryColor: '#0a0a0b',
   },
 })
 

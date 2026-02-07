@@ -188,9 +188,9 @@ function Settings() {
                   </div>
                   <p className="model-description">Sonnet-4-level coding performance at one-third the cost and twice the speed</p>
                   <div className="model-specs">
-                    <span className="spec">⚡ 2x faster than Sonnet</span>
-                    <span className="spec">💰 1/3 the cost</span>
-                    <span className="spec">🚀 Frontier performance</span>
+                    <span className="spec">2x faster than Sonnet</span>
+                    <span className="spec">1/3 the cost</span>
+                    <span className="spec">Frontier performance</span>
                   </div>
                 </div>
               </label>
@@ -210,9 +210,9 @@ function Settings() {
                   </div>
                   <p className="model-description">Maximum intelligence for the most complex codebases</p>
                   <div className="model-specs">
-                    <span className="spec">🧠 Highest intelligence</span>
-                    <span className="spec">📊 Complex analysis</span>
-                    <span className="spec">💵 Higher cost</span>
+                    <span className="spec">Highest intelligence</span>
+                    <span className="spec">Complex analysis</span>
+                    <span className="spec">Higher cost</span>
                   </div>
                 </div>
               </label>
@@ -232,9 +232,9 @@ function Settings() {
                   </div>
                   <p className="model-description">Previous generation model for basic documentation tasks</p>
                   <div className="model-specs">
-                    <span className="spec">⚡ Fast response</span>
-                    <span className="spec">💰 Low cost</span>
-                    <span className="spec">✨ Good quality</span>
+                    <span className="spec">Fast response</span>
+                    <span className="spec">Low cost</span>
+                    <span className="spec">Good quality</span>
                   </div>
                 </div>
               </label>
@@ -316,9 +316,9 @@ function Settings() {
                             <span className="event-repo">{event.repository}</span>
                           )}
                           <span className={`event-status ${event.status}`}>
-                            {event.status === 'received' && '⏳'}
-                            {event.status === 'processed' && '✅'}
-                            {event.status === 'error' && '❌'}
+                            {event.status === 'received' && '...'}
+                            {event.status === 'processed' && 'ok'}
+                            {event.status === 'error' && 'err'}
                           </span>
                         </div>
                       ))}

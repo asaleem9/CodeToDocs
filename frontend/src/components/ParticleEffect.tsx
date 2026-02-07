@@ -34,7 +34,7 @@ function ParticleEffect({ trigger, onComplete }: ParticleEffectProps) {
 
     // Create particles
     const particleCount = 100
-    const colors = ['#818cf8', '#c084fc', '#10b981', '#60a5fa', '#f59e0b']
+    const colors = ['#e0e7ff', '#a5b4fc', '#22c55e', '#fafafa', '#a1a1aa']
 
     particlesRef.current = Array.from({ length: particleCount }, () => {
       const centerX = canvas.width / 2

@@ -1,0 +1,58 @@
+name: Deploy Frontend
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'frontend/**'
+
+env:
+  PROJECT_ID: codetodocs
+  REGION: us-central1
+  SERVICE: codetodocs-frontend
+  IMAGE: gcr.io/codetodocs/codetodocs-frontend
+  BACKEND_URL: https://codetodocs-backend-ywspvwqcla-uc.a.run.app
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Configure Docker for GCR
+        run: gcloud auth configure-docker --quiet
+
+      - name: Build and push image
+        run: |
+          docker build \
+            -t ${{ env.IMAGE }}:${{ github.sha }} \
+            -t ${{ env.IMAGE }}:latest \
+            --build-arg VITE_API_URL=${{ env.BACKEND_URL }} \
+            ./frontend
+          docker push ${{ env.IMAGE }}:${{ github.sha }}
+          docker push ${{ env.IMAGE }}:latest
+
+      - name: Deploy to Cloud Run
+        run: |
+          gcloud run deploy ${{ env.SERVICE }} \
+            --image ${{ env.IMAGE }}:${{ github.sha }} \
+            --region ${{ env.REGION }} \
+            --platform managed \
+            --allow-unauthenticated \
+            --set-env-vars VITE_API_URL=${{ env.BACKEND_URL }} \
+            --memory 256Mi \
+            --cpu 1 \
+            --max-instances 2 \
+            --min-instances 0 \
+            --timeout 300 \
+            --cpu-throttling

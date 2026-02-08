@@ -617,6 +617,27 @@
   margin: 0;
 }
 
+/* Mobile Notice */
+.mobile-notice {
+  display: none;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1.25rem;
+  border: 1px solid rgba(251, 191, 36, 0.25);
+  border-radius: 4px;
+  background: rgba(251, 191, 36, 0.08);
+  color: var(--amber);
+  font-size: 0.875rem;
+  font-family: var(--font-mono);
+  margin-top: 0.5rem;
+}
+
+@media (max-width: 767px) {
+  .mobile-notice {
+    display: flex;
+  }
+}
+
 /* Responsive Design */
 @media (max-width: 1024px) {
   .hero-visual {

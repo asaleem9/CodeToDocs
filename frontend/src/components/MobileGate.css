@@ -1,0 +1,40 @@
+.mobile-gate {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem;
+  text-align: center;
+  background: var(--bg-base);
+}
+
+.mobile-gate-icon {
+  color: var(--amber);
+  margin-bottom: 1.5rem;
+}
+
+.mobile-gate h1 {
+  font-size: 1.75rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  margin: 0 0 1rem 0;
+}
+
+.mobile-gate p {
+  color: var(--text-secondary);
+  font-size: 1rem;
+  line-height: 1.6;
+  max-width: 400px;
+  margin: 0 0 2rem 0;
+}
+
+.mobile-gate-card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-default);
+  border-radius: 6px;
+  padding: 2.5rem;
+  max-width: 460px;
+  width: 100%;
+}

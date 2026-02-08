@@ -11,12 +11,15 @@ import Batch from './pages/Batch'
 import Integrations from './pages/Integrations'
 import GitHub from './pages/GitHub'
 import Logo from './components/Logo'
+import MobileGate from './components/MobileGate'
+import { useIsMobile } from './hooks/useIsMobile'
 import config from './config'
 import './App.css'
 
 function Navigation() {
   const location = useLocation()
   const { user, isAuthenticated, logout } = useAuth()
+  const isMobile = useIsMobile()
 
   const handleLogin = () => {
     // Clear any existing GitHub auth data before starting new OAuth flow
@@ -30,8 +33,8 @@ function Navigation() {
     window.location.href = `${config.apiUrl}/api/auth/github`
   }
 
-  // Don't show navigation on landing page
-  if (location.pathname === '/') {
+  // Don't show navigation on landing page or mobile
+  if (location.pathname === '/' || isMobile) {
     return null
   }
 
@@ -99,6 +102,28 @@ function Navigation() {
   )
 }
 
+function AppRoutes() {
+  const isMobile = useIsMobile()
+
+  return (
+    <Routes>
+      <Route path="/" element={<Landing />} />
+      {isMobile ? (
+        <Route path="/app/*" element={<MobileGate />} />
+      ) : (
+        <>
+          <Route path="/app" element={<Home />} />
+          <Route path="/app/batch" element={<Batch />} />
+          <Route path="/app/integrations" element={<Integrations />} />
+          <Route path="/app/history" element={<History />} />
+          <Route path="/app/github" element={<GitHub />} />
+          <Route path="/app/settings" element={<Settings />} />
+        </>
+      )}
+    </Routes>
+  )
+}
+
 function App() {
   return (
     <BrowserRouter>
@@ -131,15 +156,7 @@ function App() {
             <Navigation />
 
             <main className="app-main">
-              <Routes>
-                <Route path="/" element={<Landing />} />
-                <Route path="/app" element={<Home />} />
-                <Route path="/app/batch" element={<Batch />} />
-                <Route path="/app/integrations" element={<Integrations />} />
-                <Route path="/app/history" element={<History />} />
-                <Route path="/app/github" element={<GitHub />} />
-                <Route path="/app/settings" element={<Settings />} />
-              </Routes>
+              <AppRoutes />
             </main>
 
             <BatchProgressModal />

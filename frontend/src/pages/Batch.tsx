@@ -4,10 +4,27 @@ import axios from 'axios'
 import ReactMarkdown from 'react-markdown'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism'
+import mermaid from 'mermaid'
 import { useBatch } from '../contexts/BatchContext'
 import { showErrorToast, showSuccessToast, showLoadingToast, dismissToast } from '../utils/errorHandler'
 import { downloadAsHTML, downloadAsPDF } from '../utils/exportUtils'
 import './Batch.css'
+
+// Initialize mermaid
+mermaid.initialize({
+  startOnLoad: false,
+  theme: 'dark',
+  themeVariables: {
+    darkMode: true,
+    background: '#111113',
+    primaryColor: '#e0e7ff',
+    primaryTextColor: '#fafafa',
+    primaryBorderColor: '#27272a',
+    lineColor: '#a1a1aa',
+    secondaryColor: '#a5b4fc',
+    tertiaryColor: '#0a0a0b',
+  },
+})
 
 interface BatchProgress {
   total: number
@@ -50,8 +67,11 @@ function Batch() {
   const [localProgress, setLocalProgress] = useState<BatchProgress | null>(null)
   const [localBatchId, setLocalBatchId] = useState<string>('')
   const [localIsProcessing, setLocalIsProcessing] = useState<boolean>(false)
+  const [incrementalDocs, setIncrementalDocs] = useState<DocumentedFile[]>([])
   const progressInterval = useRef<ReturnType<typeof setInterval> | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const diagramRef = useRef<HTMLDivElement>(null)
+  const docsFetchedRef = useRef<number>(0)
 
   // Use batch context for URL mode, local state for zip mode
   const isProcessing = uploadMode === 'zip' ? localIsProcessing : batchContext.isProcessing
@@ -63,20 +83,30 @@ function Batch() {
     if (progressInterval.current) {
       clearInterval(progressInterval.current)
     }
+    docsFetchedRef.current = 0
 
     progressInterval.current = setInterval(async () => {
       try {
-        const progressRes = await axios.get(`/api/batch/progress/${id}`)
+        const progressRes = await axios.get(`/api/batch/progress/${id}`, {
+          params: { since: docsFetchedRef.current }
+        })
 
         // Update progress in local state
         if (progressRes.data.progress) {
           setLocalProgress(progressRes.data.progress)
         }
 
+        // Collect incremental documents as they complete
+        if (progressRes.data.completedDocuments?.length > 0) {
+          setIncrementalDocs(prev => [...prev, ...progressRes.data.completedDocuments])
+          docsFetchedRef.current = progressRes.data.totalCompleted
+        }
+
         if (progressRes.data.completed) {
           // Fetch final result
           const resultRes = await axios.get(`/api/batch/result/${id}`)
           setResult(resultRes.data)
+          setIncrementalDocs([])
           setLocalIsProcessing(false)
 
           // Automatically select full repo documentation if available
@@ -93,6 +123,7 @@ function Batch() {
 
         if (progressRes.data.error) {
           setLocalIsProcessing(false)
+          setIncrementalDocs([])
           if (progressInterval.current) {
             clearInterval(progressInterval.current)
           }
@@ -131,6 +162,31 @@ function Batch() {
       fetchResult()
     }
   }, [batchId, isProcessing, result])
+
+  // Render mermaid diagram when selected doc changes
+  useEffect(() => {
+    const diagram = selectedDoc?.diagram
+    if (diagram && diagramRef.current) {
+      const renderDiagram = async () => {
+        try {
+          diagramRef.current!.innerHTML = ''
+          let cleanDiagram = diagram.trim()
+          if (cleanDiagram.startsWith('```mermaid')) {
+            cleanDiagram = cleanDiagram.replace(/^```mermaid\n/, '').replace(/\n```$/, '')
+          } else if (cleanDiagram.startsWith('```')) {
+            cleanDiagram = cleanDiagram.replace(/^```\n/, '').replace(/\n```$/, '')
+          }
+          const diagramId = `mermaid-batch-${Date.now()}`
+          const { svg } = await mermaid.render(diagramId, cleanDiagram)
+          diagramRef.current!.innerHTML = svg
+        } catch (error: any) {
+          console.error('Error rendering diagram:', error)
+          diagramRef.current!.innerHTML = ''
+        }
+      }
+      renderDiagram()
+    }
+  }, [selectedDoc])
 
   useEffect(() => {
     return () => {
@@ -181,6 +237,8 @@ function Batch() {
       const loadingToastId = showLoadingToast('Starting batch processing...')
       setResult(null)
       setSelectedDoc(null)
+      setIncrementalDocs([])
+      docsFetchedRef.current = 0
 
       try {
         await batchContext.startBatch(repoUrl, maxFiles)
@@ -207,6 +265,8 @@ function Batch() {
       const loadingToastId = showLoadingToast('Uploading and processing zip file...')
       setResult(null)
       setSelectedDoc(null)
+      setIncrementalDocs([])
+      docsFetchedRef.current = 0
 
       try {
         const formData = new FormData()
@@ -479,6 +539,122 @@ function Batch() {
           </div>
         )}
 
+        {/* Show incremental results while still processing */}
+        {isProcessing && incrementalDocs.length > 0 && !result && (
+          <div className="result-section">
+            <div className="result-header">
+              <h2>Files Documented So Far</h2>
+            </div>
+
+            <div className="result-content">
+              <div className="result-sidebar">
+                <div className="summary-card">
+                  <h3>Progress</h3>
+                  <div className="stat-grid">
+                    <div className="stat">
+                      <span className="stat-value">{progress?.total || '...'}</span>
+                      <span className="stat-label">Total Files</span>
+                    </div>
+                    <div className="stat success">
+                      <span className="stat-value">{incrementalDocs.filter(d => d.success).length}</span>
+                      <span className="stat-label">Success</span>
+                    </div>
+                    <div className="stat failed">
+                      <span className="stat-value">{incrementalDocs.filter(d => !d.success).length}</span>
+                      <span className="stat-label">Failed</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="toc-section">
+                  <h3>Completed Files</h3>
+                  <div className="doc-list">
+                    {incrementalDocs.map((doc, index) => (
+                      <div
+                        key={index}
+                        className={`doc-item ${selectedDoc === doc ? 'active' : ''} ${!doc.success ? 'failed' : ''}`}
+                        onClick={() => setSelectedDoc(doc)}
+                      >
+                        <div className="doc-item-header">
+                          <span className="doc-status">
+                            {doc.success ? '+' : '-'}
+                          </span>
+                          <span className="doc-name">{doc.filePath.split('/').pop()}</span>
+                        </div>
+                        <div className="doc-item-path">{doc.filePath}</div>
+                        {doc.qualityScore && (
+                          <div className="doc-quality">
+                            Quality: {doc.qualityScore.score}/100
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              <div className="result-main">
+                {selectedDoc ? (
+                  <div className="document-view">
+                    <div className="document-header">
+                      <h2>{selectedDoc.filePath}</h2>
+                      <span className="language-tag">{selectedDoc.language}</span>
+                    </div>
+
+                    {selectedDoc.success ? (
+                      <>
+                        <div className="markdown-content">
+                          <ReactMarkdown
+                            components={{
+                              code({ node, inline, className, children, ...props }: any) {
+                                const match = /language-(\w+)/.exec(className || '')
+                                return !inline && match ? (
+                                  <SyntaxHighlighter
+                                    style={vscDarkPlus}
+                                    language={match[1]}
+                                    PreTag="div"
+                                    {...props}
+                                  >
+                                    {String(children).replace(/\n$/, '')}
+                                  </SyntaxHighlighter>
+                                ) : (
+                                  <code className={className} {...props}>
+                                    {children}
+                                  </code>
+                                )
+                              }
+                            }}
+                          >
+                            {selectedDoc.documentation}
+                          </ReactMarkdown>
+                        </div>
+                        {selectedDoc.diagram && (
+                          <div className="diagram-section">
+                            <h3>Visual Diagram</h3>
+                            <div className="diagram-container" ref={diagramRef}></div>
+                          </div>
+                        )}
+                      </>
+                    ) : (
+                      <div className="error-view">
+                        <h3>Failed to generate documentation</h3>
+                        <p>{selectedDoc.error || 'Unknown error occurred'}</p>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="empty-view">
+                    <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                      <path d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                    </svg>
+                    <p>Click a completed file to preview its documentation while processing continues</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
         {result && (
           <div className="result-section">
             <div className="result-header">
@@ -594,31 +770,39 @@ function Batch() {
                     </div>
 
                     {selectedDoc.success ? (
-                      <div className="markdown-content">
-                        <ReactMarkdown
-                          components={{
-                            code({ node, inline, className, children, ...props }: any) {
-                              const match = /language-(\w+)/.exec(className || '')
-                              return !inline && match ? (
-                                <SyntaxHighlighter
-                                  style={vscDarkPlus}
-                                  language={match[1]}
-                                  PreTag="div"
-                                  {...props}
-                                >
-                                  {String(children).replace(/\n$/, '')}
-                                </SyntaxHighlighter>
-                              ) : (
-                                <code className={className} {...props}>
-                                  {children}
-                                </code>
-                              )
-                            }
-                          }}
-                        >
-                          {selectedDoc.documentation}
-                        </ReactMarkdown>
-                      </div>
+                      <>
+                        <div className="markdown-content">
+                          <ReactMarkdown
+                            components={{
+                              code({ node, inline, className, children, ...props }: any) {
+                                const match = /language-(\w+)/.exec(className || '')
+                                return !inline && match ? (
+                                  <SyntaxHighlighter
+                                    style={vscDarkPlus}
+                                    language={match[1]}
+                                    PreTag="div"
+                                    {...props}
+                                  >
+                                    {String(children).replace(/\n$/, '')}
+                                  </SyntaxHighlighter>
+                                ) : (
+                                  <code className={className} {...props}>
+                                    {children}
+                                  </code>
+                                )
+                              }
+                            }}
+                          >
+                            {selectedDoc.documentation}
+                          </ReactMarkdown>
+                        </div>
+                        {selectedDoc.diagram && (
+                          <div className="diagram-section">
+                            <h3>Visual Diagram</h3>
+                            <div className="diagram-container" ref={diagramRef}></div>
+                          </div>
+                        )}
+                      </>
                     ) : (
                       <div className="error-view">
                         <h3>Failed to generate documentation</h3>

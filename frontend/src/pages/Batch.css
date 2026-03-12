@@ -614,6 +614,32 @@
   color: var(--text-primary);
 }
 
+.diagram-section {
+  margin-top: 2rem;
+  padding: 1.5rem;
+  background: var(--bg-base);
+  border: 1px solid var(--border-default);
+  border-radius: 8px;
+}
+
+.diagram-section h3 {
+  color: var(--text-primary);
+  margin-bottom: 1rem;
+  font-family: var(--font-mono);
+}
+
+.diagram-container {
+  display: flex;
+  justify-content: center;
+  overflow-x: auto;
+  padding: 1rem 0;
+}
+
+.diagram-container svg {
+  max-width: 100%;
+  height: auto;
+}
+
 .error-view {
   text-align: center;
   padding: 3rem;

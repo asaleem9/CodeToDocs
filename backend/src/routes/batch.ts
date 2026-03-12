@@ -28,6 +28,7 @@ const upload = multer({
 const activeBatches = new Map<string, {
   userId: number;
   progress: BatchProgress;
+  completedDocuments: any[];
   result?: any;
   error?: string;
 }>();
@@ -59,6 +60,7 @@ router.post('/start', async (req: Request, res: Response) => {
     // Initialize batch tracking
     activeBatches.set(batchId, {
       userId,
+      completedDocuments: [],
       progress: {
         total: 0,
         completed: 0,
@@ -84,6 +86,13 @@ router.post('/start', async (req: Request, res: Response) => {
         const batch = activeBatches.get(batchId);
         if (batch) {
           batch.progress = progress;
+        }
+      },
+      (doc: any) => {
+        // File completed callback
+        const batch = activeBatches.get(batchId);
+        if (batch) {
+          batch.completedDocuments.push(doc);
         }
       }
     )
@@ -143,6 +152,7 @@ router.post('/upload-zip', upload.single('zipFile'), async (req: Request, res: R
     // Initialize batch tracking
     activeBatches.set(batchId, {
       userId,
+      completedDocuments: [],
       progress: {
         total: 0,
         completed: 0,
@@ -203,12 +213,21 @@ router.post('/upload-zip', upload.single('zipFile'), async (req: Request, res: R
         }
 
         // Process files with progress tracking
-        const documents = await processBatch(files, (progress: BatchProgress) => {
-          const batch = activeBatches.get(batchId);
-          if (batch) {
-            batch.progress = progress;
+        const documents = await processBatch(
+          files,
+          (progress: BatchProgress) => {
+            const batch = activeBatches.get(batchId);
+            if (batch) {
+              batch.progress = progress;
+            }
+          },
+          (doc: any) => {
+            const batch = activeBatches.get(batchId);
+            if (batch) {
+              batch.completedDocuments.push(doc);
+            }
           }
-        });
+        );
 
         // Generate table of contents
         const tableOfContents = generateTableOfContents(documents);
@@ -316,10 +335,16 @@ router.get('/progress/:batchId', (req: Request, res: Response) => {
     return res.status(404).json({ error: 'Batch job not found' });
   }
 
+  // Return completed documents incrementally based on offset
+  const since = parseInt(req.query.since as string) || 0;
+  const newDocuments = batch.completedDocuments.slice(since);
+
   res.json({
     progress: batch.progress,
     completed: batch.result !== undefined,
     error: batch.error,
+    completedDocuments: newDocuments,
+    totalCompleted: batch.completedDocuments.length,
   });
 });
 

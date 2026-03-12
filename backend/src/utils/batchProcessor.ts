@@ -302,7 +302,8 @@ function getLanguageFromExtension(ext: string): string {
  */
 export async function processBatch(
   files: FileToDocument[],
-  onProgress?: (progress: BatchProgress) => void
+  onProgress?: (progress: BatchProgress) => void,
+  onFileComplete?: (doc: DocumentedFile) => void
 ): Promise<DocumentedFile[]> {
   const results: DocumentedFile[] = [];
   let completed = 0;
@@ -365,12 +366,15 @@ export async function processBatch(
       })
     );
 
-    // Update counters
+    // Update counters and notify per-file completion
     for (const result of chunkResults) {
       results.push(result);
       completed++;
       if (!result.success) {
         failed++;
+      }
+      if (onFileComplete) {
+        onFileComplete(result);
       }
     }
 
@@ -630,7 +634,8 @@ export async function processRepository(
     maxFileSize?: number;
     extensions?: string[];
   } = {},
-  onProgress?: (progress: BatchProgress) => void
+  onProgress?: (progress: BatchProgress) => void,
+  onFileComplete?: (doc: DocumentedFile) => void
 ): Promise<BatchResult> {
   try {
     console.log(`Starting batch processing for: ${repoUrl}`);
@@ -645,7 +650,7 @@ export async function processRepository(
     console.log(`Found ${files.length} files to document`);
 
     // Process files
-    const documents = await processBatch(files, onProgress);
+    const documents = await processBatch(files, onProgress, onFileComplete);
 
     // Generate table of contents
     const tableOfContents = generateTableOfContents(documents);

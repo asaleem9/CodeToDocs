@@ -52,6 +52,7 @@ function Home() {
   const [showExportMenu, setShowExportMenu] = useState<boolean>(false)
   const [progress, setProgress] = useState<number>(0)
   const [progressStatus, setProgressStatus] = useState<string>('')
+  const [pendingDemo, setPendingDemo] = useState<typeof demoSamples[0] | null>(null)
   const diagramRef = useRef<HTMLDivElement>(null)
   const progressIntervalRef = useRef<number | null>(null)
 
@@ -189,6 +190,14 @@ function Home() {
     }
   }
 
+  // Auto-generate when demo code is loaded into state
+  useEffect(() => {
+    if (pendingDemo && code === pendingDemo.code) {
+      setPendingDemo(null)
+      handleGenerateDocumentation()
+    }
+  }, [code, pendingDemo])
+
   // Cleanup on unmount
   useEffect(() => {
     return () => {
@@ -222,11 +231,7 @@ function Home() {
     setLanguage(sample.language)
     setShowDemoMenu(false)
     showSuccessToast(`Loaded demo: ${sample.name}`)
-
-    // Auto-generate documentation for the demo
-    setTimeout(() => {
-      handleGenerateDocumentation()
-    }, 500)
+    setPendingDemo(sample)
   }
 
   const handleExport = async (format: 'markdown' | 'html', action: 'download' | 'copy') => {

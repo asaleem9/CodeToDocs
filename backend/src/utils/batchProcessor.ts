@@ -452,7 +452,10 @@ export function generateBatchSummary(result: BatchResult): string {
   summary += `**Total Files Processed**: ${result.totalFiles}\n`;
   summary += `**Successfully Documented**: ${result.successCount}\n`;
   summary += `**Failed**: ${result.failedCount}\n`;
-  summary += `**Success Rate**: ${Math.round((result.successCount / result.totalFiles) * 100)}%\n\n`;
+  const successRate = result.totalFiles > 0
+    ? Math.round((result.successCount / result.totalFiles) * 100)
+    : 0;
+  summary += `**Success Rate**: ${successRate}%\n\n`;
 
   // Language breakdown
   const languageCounts: Record<string, number> = {};

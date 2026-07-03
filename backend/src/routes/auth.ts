@@ -73,7 +73,9 @@ router.get('/github/callback', async (req: Request, res: Response) => {
       req.session.accessToken = accessToken;
     }
 
-    // Encode user data and token to pass to frontend
+    // Encode only the public user profile to pass to the frontend for display.
+    // The access token stays server-side in the session and is never exposed in
+    // the URL or to client-side JavaScript.
     const userData = encodeURIComponent(JSON.stringify({
       id: user.id,
       login: user.login,
@@ -82,10 +84,9 @@ router.get('/github/callback', async (req: Request, res: Response) => {
       avatar_url: user.avatar_url,
       html_url: user.html_url,
     }));
-    const encodedToken = encodeURIComponent(accessToken);
 
-    // Redirect to frontend with success and user data
-    res.redirect(`${frontendUrl}/app/github?auth=success&user=${userData}&token=${encodedToken}`);
+    // Redirect to frontend with success and user profile (no token)
+    res.redirect(`${frontendUrl}/app/github?auth=success&user=${userData}`);
   } catch (error: any) {
     console.error('Error during GitHub OAuth callback:', error);
     res.redirect(`${frontendUrl}/app/github?error=auth_failed`);

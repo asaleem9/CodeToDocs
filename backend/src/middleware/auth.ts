@@ -1,4 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
+import crypto from 'crypto';
 
 /**
  * Middleware to check if user is authenticated
@@ -16,35 +17,41 @@ export function requireAuth(req: Request, res: Response, next: NextFunction) {
 }
 
 /**
- * Middleware to optionally check authentication
- * Continues even if not authenticated, but sets req.userId if available
- */
-export function optionalAuth(req: Request, res: Response, next: NextFunction) {
-  // User ID will be available in req.session.user.id if authenticated
-  next();
-}
-
-/**
  * Helper to get user ID from request
- * Checks both session (for session-based auth) and custom header (for localStorage-based GitHub auth)
- * Returns null if not authenticated
+ * Identity is derived ONLY from the signed session cookie. We deliberately do not
+ * trust any client-supplied identity header: GitHub numeric IDs are public, so a
+ * header-based identity would let anyone impersonate anyone.
+ * Returns null if not authenticated.
  */
 export function getUserId(req: Request): number | null {
-  // First check session-based auth
   if (req.session?.user?.id) {
     return req.session.user.id;
   }
 
-  // Then check for GitHub user ID from custom header (localStorage-based auth)
-  const githubUserId = req.headers['x-github-user-id'];
-  if (githubUserId && typeof githubUserId === 'string') {
-    const userId = parseInt(githubUserId, 10);
-    if (!isNaN(userId)) {
-      return userId;
-    }
+  return null;
+}
+
+/**
+ * Identity to use for storing/scoping a user's documents. For authenticated
+ * users this is their GitHub id. For anonymous users it is a stable, random,
+ * per-session id (negative so it never collides with a real GitHub id), which
+ * keeps one anonymous session's documents isolated from another's.
+ */
+export function getStorageUserId(req: Request): number {
+  const userId = getUserId(req);
+  if (userId) {
+    return userId;
   }
 
-  return null;
+  if (req.session) {
+    if (!req.session.anonId) {
+      // 1..2^31-1, negated. crypto.randomInt is unbiased.
+      req.session.anonId = -crypto.randomInt(1, 2_147_483_647);
+    }
+    return req.session.anonId;
+  }
+
+  return 0;
 }
 
 /**

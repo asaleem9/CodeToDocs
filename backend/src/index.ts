@@ -13,8 +13,21 @@ import { checkDatabaseConnection, closeDatabaseConnection } from './db/connectio
 
 dotenv.config();
 
-// Debug: Check if API key is loaded
-console.log('ANTHROPIC_API_KEY loaded:', process.env.ANTHROPIC_API_KEY ? 'Yes (length: ' + process.env.ANTHROPIC_API_KEY.length + ')' : 'No');
+// In production, refuse to boot without the secrets that protect sessions and
+// stored OAuth tokens. Falling back to the well-known defaults would make
+// sessions forgeable and stored tokens decryptable.
+if (process.env.NODE_ENV === 'production') {
+  const missing: string[] = [];
+  if (!process.env.SESSION_SECRET) missing.push('SESSION_SECRET');
+  if (!process.env.DATABASE_ENCRYPTION_KEY) missing.push('DATABASE_ENCRYPTION_KEY');
+  if (missing.length > 0) {
+    console.error(`Refusing to start: missing required environment variables in production: ${missing.join(', ')}`);
+    process.exit(1);
+  }
+}
+
+// Confirm the Anthropic key is present (without logging any key material).
+console.log('ANTHROPIC_API_KEY loaded:', process.env.ANTHROPIC_API_KEY ? 'Yes' : 'No');
 
 // Check database connection on startup
 checkDatabaseConnection().then(connected => {
@@ -28,6 +41,10 @@ checkDatabaseConnection().then(connected => {
 const app: Express = express();
 const port = process.env.PORT || 3001;
 const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
+
+// Behind Cloud Run / a reverse proxy so req.ip and secure cookies reflect the
+// real client connection (needed for correct rate limiting and cookie flags).
+app.set('trust proxy', 1);
 
 // CORS configuration
 app.use(cors({

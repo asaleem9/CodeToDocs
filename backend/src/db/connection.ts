@@ -9,10 +9,18 @@ if (!connectionString) {
   console.warn('DATABASE_URL not set - database features will be disabled');
 }
 
+// TLS config for the database connection. Verify certificates by default in
+// production; an operator can supply a CA (DATABASE_CA_CERT) or, only if their
+// provider genuinely requires it, opt out via DATABASE_SSL_REJECT_UNAUTHORIZED=false.
+const productionSsl = {
+  rejectUnauthorized: process.env.DATABASE_SSL_REJECT_UNAUTHORIZED !== 'false',
+  ca: process.env.DATABASE_CA_CERT || undefined,
+};
+
 // Create connection pool
 export const pool = connectionString ? new Pool({
   connectionString,
-  ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
+  ssl: process.env.NODE_ENV === 'production' ? productionSsl : false,
   max: 20,
   idleTimeoutMillis: 30000,
   connectionTimeoutMillis: 2000,

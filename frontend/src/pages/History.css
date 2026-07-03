@@ -1,5 +1,6 @@
 .history-page {
-  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
 }
 
 .history-container {
@@ -105,7 +106,10 @@
   display: grid;
   grid-template-columns: 380px 1fr;
   gap: 1.5rem;
-  min-height: 600px;
+  /* Fill the remaining viewport so each panel scrolls internally instead of
+     stretching the whole page to fit a long document. */
+  height: calc(100vh - 24rem);
+  min-height: 460px;
 }
 
 .history-sidebar {
@@ -115,6 +119,7 @@
   overflow: hidden;
   display: flex;
   flex-direction: column;
+  min-height: 0;
 }
 
 .loading-state {
@@ -166,6 +171,7 @@
 .doc-list {
   overflow-y: auto;
   flex: 1;
+  min-height: 0;
 }
 
 .doc-item {
@@ -298,6 +304,7 @@
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  min-height: 0;
 }
 
 .detail-header {
@@ -362,6 +369,7 @@
 .documentation-display {
   flex: 1;
   overflow-y: auto;
+  min-height: 0;
   padding: 1.5rem;
   color: var(--text-primary);
   font-size: 0.938rem;
@@ -551,6 +559,8 @@
 @media (max-width: 1024px) {
   .history-content {
     grid-template-columns: 1fr;
+    /* Stacked layout scrolls the page normally instead of each panel. */
+    height: auto;
   }
 
   .history-sidebar {

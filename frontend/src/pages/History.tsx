@@ -66,7 +66,6 @@ function History() {
   const [docs, setDocs] = useState<StoredDoc[]>([])
   const [selectedDoc, setSelectedDoc] = useState<StoredDoc | null>(null)
   const [isLoading, setIsLoading] = useState(true)
-  const [stats, setStats] = useState<any>(null)
   const [isDiagramCollapsed, setIsDiagramCollapsed] = useState<boolean>(false)
   const [activeTab, setActiveTab] = useState<'my-docs' | 'public'>('my-docs')
   const diagramRef = useRef<HTMLDivElement>(null)
@@ -115,7 +114,6 @@ function History() {
       const url = activeTab === 'public' ? '/api/documentation?view=public' : '/api/documentation'
       const response = await axios.get(url, { withCredentials: true })
       setDocs(response.data.documentation || [])
-      setStats(response.data.stats)
       // Reset selected doc when switching tabs
       setSelectedDoc(null)
     } catch (error) {
@@ -221,15 +219,11 @@ function History() {
             <h1>History</h1>
             <p className="history-subtitle">Recent documentation generations</p>
           </div>
-          {stats && (
+          {!isLoading && docs.length > 0 && (
             <div className="history-stats">
               <div className="stat-item">
-                <span className="stat-value">{stats.entries}</span>
-                <span className="stat-label">Stored</span>
-              </div>
-              <div className="stat-item">
-                <span className="stat-value">{stats.maxSize}</span>
-                <span className="stat-label">Max</span>
+                <span className="stat-value">{docs.length}</span>
+                <span className="stat-label">{activeTab === 'public' ? 'Public Docs' : 'Documents'}</span>
               </div>
             </div>
           )}

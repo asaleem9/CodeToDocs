@@ -11,5 +11,8 @@ declare module 'express-session' {
       html_url: string;
     };
     accessToken?: string;
+    // Stable per-session id for anonymous users so their documents are isolated
+    // from other anonymous sessions. Negative to never collide with GitHub ids.
+    anonId?: number;
   }
 }

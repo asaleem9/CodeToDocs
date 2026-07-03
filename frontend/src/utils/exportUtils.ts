@@ -1,4 +1,29 @@
 import { marked } from 'marked';
+import DOMPurify from 'dompurify';
+
+/**
+ * Escape a value for safe interpolation into HTML text/attribute context.
+ */
+function escapeHtml(value: unknown): string {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+/**
+ * Render markdown to HTML and strip any dangerous markup. Documentation can
+ * contain LLM/attacker-influenced content, so never embed the raw output.
+ */
+function renderSafeHtml(markdown: string): Promise<string> | string {
+  const rendered = marked(markdown);
+  if (rendered instanceof Promise) {
+    return rendered.then((html) => DOMPurify.sanitize(html));
+  }
+  return DOMPurify.sanitize(rendered);
+}
 
 export interface ExportMetadata {
   language: string;
@@ -49,8 +74,8 @@ export async function downloadAsHTML(
   const timestamp = new Date().toISOString().split('T')[0];
   const defaultFilename = `documentation-${metadata.language}-${timestamp}.html`;
 
-  // Convert markdown to HTML
-  const htmlContent = await marked(documentation);
+  // Convert markdown to sanitized HTML
+  const htmlContent = await renderSafeHtml(documentation);
   const fullHTML = formatHTMLDocument(htmlContent, metadata);
 
   // Create blob and download
@@ -83,7 +108,7 @@ export async function copyAsHTML(
   documentation: string,
   metadata: ExportMetadata
 ): Promise<void> {
-  const htmlContent = await marked(documentation);
+  const htmlContent = await renderSafeHtml(documentation);
   const metadataComment = `<!-- Generated: ${metadata.generatedAt.toISOString()} | Language: ${metadata.language} -->`;
   await navigator.clipboard.writeText(`${metadataComment}\n${htmlContent}`);
 }
@@ -96,8 +121,8 @@ export async function downloadAsPDF(
   metadata: ExportMetadata,
   _filename?: string
 ): Promise<void> {
-  // Convert markdown to HTML
-  const htmlContent = await marked(documentation);
+  // Convert markdown to sanitized HTML
+  const htmlContent = await renderSafeHtml(documentation);
   const fullHTML = formatPrintableDocument(htmlContent, metadata);
 
   // Open a new window with the content
@@ -127,7 +152,7 @@ function formatPrintableDocument(htmlContent: string, metadata: ExportMetadata):
 <html>
 <head>
   <meta charset="UTF-8">
-  <title>Documentation - ${metadata.language}</title>
+  <title>Documentation - ${escapeHtml(metadata.language)}</title>
   <style>
     @page {
       margin: 15mm;
@@ -401,42 +426,42 @@ function formatPrintableDocument(htmlContent: string, metadata: ExportMetadata):
 </head>
 <body>
   <div class="header">
-    <h1>📘 ${metadata.language} Documentation</h1>
-    <div class="subtitle">Generated with CodeToDocsAI • ${metadata.generatedAt.toLocaleDateString()}</div>
+    <h1>📘 ${escapeHtml(metadata.language)} Documentation</h1>
+    <div class="subtitle">Generated with CodeToDocsAI • ${escapeHtml(metadata.generatedAt.toLocaleDateString())}</div>
   </div>
 
   <div class="metadata">
     <div class="metadata-grid">
       <div class="metadata-item">
         <span class="metadata-label">LANGUAGE</span>
-        <strong>${metadata.language}</strong>
+        <strong>${escapeHtml(metadata.language)}</strong>
       </div>
       <div class="metadata-item">
         <span class="metadata-label">DATE</span>
-        <strong>${metadata.generatedAt.toLocaleString()}</strong>
+        <strong>${escapeHtml(metadata.generatedAt.toLocaleString())}</strong>
       </div>
       ${metadata.qualityScore !== undefined ? `
         <div class="metadata-item">
           <span class="metadata-label">QUALITY</span>
-          <strong>${metadata.qualityScore}/100</strong>
+          <strong>${escapeHtml(metadata.qualityScore)}/100</strong>
         </div>
       ` : ''}
       ${metadata.prInfo ? `
         <div class="metadata-item">
           <span class="metadata-label">SOURCE</span>
-          <strong>PR #${metadata.prInfo.prNumber}</strong>
+          <strong>PR #${escapeHtml(metadata.prInfo.prNumber)}</strong>
         </div>
         <div class="metadata-item">
           <span class="metadata-label">REPO</span>
-          <strong>${metadata.prInfo.repository}</strong>
+          <strong>${escapeHtml(metadata.prInfo.repository)}</strong>
         </div>
         <div class="metadata-item">
           <span class="metadata-label">BRANCH</span>
-          <strong>${metadata.prInfo.branch}</strong>
+          <strong>${escapeHtml(metadata.prInfo.branch)}</strong>
         </div>
         <div class="metadata-item">
           <span class="metadata-label">AUTHOR</span>
-          <strong>${metadata.prInfo.author}</strong>
+          <strong>${escapeHtml(metadata.prInfo.author)}</strong>
         </div>
       ` : ''}
     </div>
@@ -497,7 +522,7 @@ function formatHTMLDocument(
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Documentation - ${metadata.language}</title>
+  <title>Documentation - ${escapeHtml(metadata.language)}</title>
   <style>
     * {
       margin: 0;
@@ -656,13 +681,13 @@ function formatHTMLDocument(
   <div class="metadata">
     <h3>📄 Documentation Metadata</h3>
     <ul class="metadata-list">
-      <li><strong>Language:</strong> ${metadata.language}</li>
-      <li><strong>Generated:</strong> ${metadata.generatedAt.toLocaleString()}</li>
-      ${metadata.qualityScore !== undefined ? `<li><strong>Quality Score:</strong> ${metadata.qualityScore}/100</li>` : ''}
+      <li><strong>Language:</strong> ${escapeHtml(metadata.language)}</li>
+      <li><strong>Generated:</strong> ${escapeHtml(metadata.generatedAt.toLocaleString())}</li>
+      ${metadata.qualityScore !== undefined ? `<li><strong>Quality Score:</strong> ${escapeHtml(metadata.qualityScore)}/100</li>` : ''}
       ${metadata.prInfo ? `
-        <li><strong>Source:</strong> PR #${metadata.prInfo.prNumber} in ${metadata.prInfo.repository}</li>
-        <li><strong>Branch:</strong> ${metadata.prInfo.branch}</li>
-        <li><strong>Author:</strong> ${metadata.prInfo.author}</li>
+        <li><strong>Source:</strong> PR #${escapeHtml(metadata.prInfo.prNumber)} in ${escapeHtml(metadata.prInfo.repository)}</li>
+        <li><strong>Branch:</strong> ${escapeHtml(metadata.prInfo.branch)}</li>
+        <li><strong>Author:</strong> ${escapeHtml(metadata.prInfo.author)}</li>
       ` : ''}
     </ul>
   </div>

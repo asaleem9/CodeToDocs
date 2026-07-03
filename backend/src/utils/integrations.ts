@@ -1,9 +1,85 @@
 import axios from 'axios';
 import { Octokit } from '@octokit/rest';
+import dns from 'dns';
+import net from 'net';
 
 /**
  * Integration utilities for exporting documentation to various platforms
  */
+
+// ============================================================================
+// SSRF protection
+// ============================================================================
+
+/**
+ * Is this IP address in a private, loopback, link-local or otherwise
+ * non-routable range that a client should never be able to make us reach?
+ */
+function isPrivateAddress(ip: string): boolean {
+  if (net.isIPv4(ip)) {
+    const [a, b] = ip.split('.').map(Number);
+    if (a === 0 || a === 10 || a === 127) return true;
+    if (a === 169 && b === 254) return true; // link-local (cloud metadata)
+    if (a === 172 && b >= 16 && b <= 31) return true;
+    if (a === 192 && b === 168) return true;
+    if (a === 100 && b >= 64 && b <= 127) return true; // CGNAT
+    return false;
+  }
+
+  const lower = ip.toLowerCase();
+  if (lower === '::1' || lower === '::') return true;
+  if (lower.startsWith('fe80')) return true; // link-local
+  if (lower.startsWith('fc') || lower.startsWith('fd')) return true; // unique local
+  if (lower.startsWith('::ffff:')) return isPrivateAddress(lower.slice('::ffff:'.length));
+  return false;
+}
+
+/**
+ * Validate that a user-supplied URL is a public HTTPS endpoint (optionally on an
+ * allow-listed host) and does not resolve to an internal address. Throws on
+ * anything unsafe. Prevents SSRF into internal services / cloud metadata.
+ */
+async function assertSafeExternalUrl(rawUrl: string, allowedHosts?: string[]): Promise<void> {
+  let url: URL;
+  try {
+    url = new URL(rawUrl);
+  } catch {
+    throw new Error('Invalid URL');
+  }
+
+  if (url.protocol !== 'https:') {
+    throw new Error('Only https:// URLs are allowed');
+  }
+
+  const host = url.hostname.toLowerCase();
+
+  if (allowedHosts && !allowedHosts.includes(host)) {
+    throw new Error(`Destination host is not allowed: ${host}`);
+  }
+
+  if (host === 'localhost') {
+    throw new Error('Destination host is not allowed');
+  }
+
+  // IP literal: check directly.
+  if (net.isIP(host)) {
+    if (isPrivateAddress(host)) {
+      throw new Error('Destination resolves to a private address');
+    }
+    return;
+  }
+
+  // Hostname: resolve and reject if any address is internal.
+  const addresses = await dns.promises.lookup(host, { all: true });
+  if (addresses.length === 0) {
+    throw new Error('Destination host could not be resolved');
+  }
+  for (const { address } of addresses) {
+    if (isPrivateAddress(address)) {
+      throw new Error('Destination resolves to a private address');
+    }
+  }
+}
 
 // ============================================================================
 // Notion Integration
@@ -138,6 +214,9 @@ export async function exportToConfluence(
   config: ConfluenceConfig
 ): Promise<{ success: boolean; url?: string; error?: string }> {
   try {
+    // Confluence base URL is user-supplied - make sure it isn't an SSRF target.
+    await assertSafeExternalUrl(config.baseUrl);
+
     const confluenceHtml = markdownToConfluenceStorage(markdown);
 
     const auth = Buffer.from(`${config.email}:${config.apiToken}`).toString('base64');
@@ -165,6 +244,7 @@ export async function exportToConfluence(
           Authorization: `Basic ${auth}`,
           'Content-Type': 'application/json',
         },
+        maxRedirects: 0,
       }
     );
 
@@ -369,6 +449,10 @@ export async function sendSlackNotification(
   }
 ): Promise<{ success: boolean; error?: string }> {
   try {
+    // Slack incoming webhooks always live on hooks.slack.com - enforce that to
+    // prevent the webhook URL from being used as an SSRF vector.
+    await assertSafeExternalUrl(config.webhookUrl, ['hooks.slack.com']);
+
     await axios.post(config.webhookUrl, {
       attachments: [
         {
@@ -383,6 +467,8 @@ export async function sendSlackNotification(
           ts: Math.floor(Date.now() / 1000),
         },
       ],
+    }, {
+      maxRedirects: 0,
     });
 
     return { success: true };

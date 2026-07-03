@@ -1,6 +1,8 @@
 import express, { Request, Response } from 'express';
 import { exchangeCodeForToken, getGitHubUser, getUserRepositories } from '../services/authService';
 import { tokenStorage } from '../services/tokenStorage';
+import { signToken } from '../utils/appToken';
+import { getAuthUser, getUserId } from '../middleware/auth';
 
 const router = express.Router();
 
@@ -73,19 +75,26 @@ router.get('/github/callback', async (req: Request, res: Response) => {
       req.session.accessToken = accessToken;
     }
 
-    // Encode user data and token to pass to frontend
-    const userData = encodeURIComponent(JSON.stringify({
+    const profile = {
       id: user.id,
       login: user.login,
       name: user.name,
       email: user.email,
       avatar_url: user.avatar_url,
       html_url: user.html_url,
-    }));
-    const encodedToken = encodeURIComponent(accessToken);
+    };
 
-    // Redirect to frontend with success and user data
-    res.redirect(`${frontendUrl}/app/github?auth=success&user=${userData}&token=${encodedToken}`);
+    // Encode the public user profile to pass to the frontend for display.
+    const userData = encodeURIComponent(JSON.stringify(profile));
+
+    // Issue a signed app token so the client can authenticate cross-origin
+    // (the GitHub access token stays server-side). It goes in the URL fragment,
+    // which browsers do not send to servers or include in the Referer header.
+    const appToken = signToken(profile);
+
+    res.redirect(
+      `${frontendUrl}/app/github?auth=success&user=${userData}#token=${encodeURIComponent(appToken)}`
+    );
   } catch (error: any) {
     console.error('Error during GitHub OAuth callback:', error);
     res.redirect(`${frontendUrl}/app/github?error=auth_failed`);
@@ -97,12 +106,13 @@ router.get('/github/callback', async (req: Request, res: Response) => {
  * Get current authenticated user
  */
 router.get('/user', (req: Request, res: Response) => {
-  if (!req.session?.user) {
+  const user = getAuthUser(req);
+  if (!user) {
     return res.status(401).json({ error: 'Not authenticated' });
   }
 
   res.json({
-    user: req.session.user,
+    user,
     authenticated: true,
   });
 });
@@ -112,8 +122,16 @@ router.get('/user', (req: Request, res: Response) => {
  * Get user's GitHub repositories
  */
 router.get('/repositories', async (req: Request, res: Response) => {
-  if (!req.session?.accessToken) {
+  const userId = getUserId(req);
+  if (!userId) {
     return res.status(401).json({ error: 'Not authenticated' });
+  }
+
+  // Resolve the GitHub access token from server-side storage (works whether the
+  // caller authenticated via the app token or a session).
+  const accessToken = req.session?.accessToken || (await tokenStorage.get(userId));
+  if (!accessToken) {
+    return res.status(401).json({ error: 'GitHub authorization not found. Please log in again.' });
   }
 
   try {
@@ -121,7 +139,7 @@ router.get('/repositories', async (req: Request, res: Response) => {
     const perPage = parseInt(req.query.per_page as string) || 30;
 
     const repositories = await getUserRepositories(
-      req.session.accessToken,
+      accessToken,
       page,
       perPage
     );
@@ -142,9 +160,10 @@ router.get('/repositories', async (req: Request, res: Response) => {
  * Logout user and destroy session
  */
 router.post('/logout', async (req: Request, res: Response) => {
-  // Remove stored OAuth token
-  if (req.session?.user?.id) {
-    await tokenStorage.remove(req.session.user.id);
+  // Remove stored OAuth token for whoever is making the request (token or session).
+  const userId = getUserId(req);
+  if (userId) {
+    await tokenStorage.remove(userId);
   }
 
   if (req.session) {

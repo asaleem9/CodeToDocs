@@ -24,10 +24,6 @@ export interface DocumentationResult {
 function getAnthropicClient(): Anthropic {
   const apiKey = process.env.ANTHROPIC_API_KEY;
 
-  console.log('Getting Anthropic client, API key present:', !!apiKey);
-  console.log('API key length:', apiKey?.length);
-  console.log('API key first 10 chars:', apiKey?.substring(0, 10));
-
   if (!apiKey) {
     throw new Error('ANTHROPIC_API_KEY environment variable is not set');
   }

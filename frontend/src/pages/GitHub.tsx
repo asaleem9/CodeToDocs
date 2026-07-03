@@ -31,40 +31,34 @@ function GitHub() {
   const [searchParams] = useSearchParams()
   const { user, isAuthenticated } = useAuth()
 
-  // Check for OAuth success callback and store token
+  // Handle OAuth success callback. The access token is NOT in the URL - it lives
+  // in the server session. We only receive the public profile for display and
+  // fetch repositories through the backend using the session token.
   useEffect(() => {
     const authSuccess = searchParams.get('auth')
     const userParam = searchParams.get('user')
-    const tokenParam = searchParams.get('token')
 
-    if (authSuccess === 'success' && userParam && tokenParam) {
+    if (authSuccess === 'success' && userParam) {
       try {
-        console.log('[GitHub] OAuth success detected, storing token and user data')
+        console.log('[GitHub] OAuth success detected')
 
-        // Decode and parse user data
+        // Decode and parse the public user profile
         const user = JSON.parse(decodeURIComponent(userParam))
-        const token = decodeURIComponent(tokenParam)
 
-        // Store in localStorage for persistent access
-        localStorage.setItem('github_token', token)
+        // Cache only non-sensitive display info
         localStorage.setItem('github_username', user.login)
         localStorage.setItem('github_avatar', user.avatar_url)
         localStorage.setItem('github_user', JSON.stringify(user))
-        localStorage.setItem('github_user_id', user.id.toString()) // Store numeric GitHub user ID
 
         showSuccessToast(`Successfully logged in as @${user.login}!`)
 
         // Update local state
-        setGithubToken(token)
         setUsername(user.login)
         setAvatarUrl(user.avatar_url)
         setShowTokenInput(false)
 
-        // Fetch repositories with the token
-        fetchRepositories(token)
-
-        // Note: No need to call checkAuth() - AuthContext will automatically
-        // pick up the localStorage values on next render
+        // Fetch repositories via the backend using the session token
+        fetchRepositoriesFromSession()
 
         // Clean up URL
         navigate('/app/github', { replace: true })
@@ -128,8 +122,11 @@ function GitHub() {
 
     setIsLoading(true)
     try {
-      // Verify token and get user info
+      // Verify token and get user info. This is a direct cross-origin call to
+      // GitHub, so we must not send our session cookie (GitHub replies with a
+      // wildcard CORS origin, which browsers reject in credentialed mode).
       const response = await axios.get('https://api.github.com/user', {
+        withCredentials: false,
         headers: {
           Authorization: `token ${githubToken}`,
           Accept: 'application/json',
@@ -177,18 +174,16 @@ function GitHub() {
   const fetchRepositoriesFromSession = async () => {
     setIsLoading(true)
     try {
-      // Use the backend endpoint that uses the session token
+      // Use the backend endpoint that reads the token from the session
       const response = await axios.get('/api/auth/repositories', {
-        withCredentials: true,
         params: {
           per_page: 100,
         },
       })
       setRepositories(response.data.repositories)
     } catch (error: any) {
-      // Silently fail - this is expected for localStorage-based auth
-      // The user is already authenticated via localStorage token
-      console.log('[GitHub] Session-based auth failed (expected for localStorage auth)', error)
+      console.error('[GitHub] Error fetching repositories from session:', error)
+      showErrorToast(error)
     } finally {
       setIsLoading(false)
     }
@@ -206,6 +201,7 @@ function GitHub() {
     setIsLoading(true)
     try {
       const response = await axios.get('https://api.github.com/user/repos', {
+        withCredentials: false,
         headers: {
           Authorization: `token ${token}`,
           Accept: 'application/json',

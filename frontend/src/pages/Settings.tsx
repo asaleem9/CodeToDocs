@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import axios from 'axios'
-import { showErrorToast, showSuccessToast, showWarningToast, showLoadingToast, dismissToast } from '../utils/errorHandler'
+import { showErrorToast, showSuccessToast, showLoadingToast, dismissToast } from '../utils/errorHandler'
 import config from '../config'
 import './Settings.css'
 
@@ -21,18 +21,12 @@ interface WebhookStatus {
 }
 
 function Settings() {
-  const [apiKey, setApiKey] = useState('')
-  const [showApiKey, setShowApiKey] = useState(false)
   const [claudeModel, setClaudeModel] = useState<ClaudeModel>('claude-haiku-4-5-20251001')
   const [webhookStatus, setWebhookStatus] = useState<WebhookStatus | null>(null)
   const webhookUrl = `${config.apiUrl}/api/webhook/github`
 
-  // Load settings from localStorage and backend on mount
+  // Load settings from the backend on mount
   useEffect(() => {
-    const savedApiKey = localStorage.getItem('anthropic_api_key') || ''
-
-    setApiKey(savedApiKey)
-
     // Fetch model preference from backend
     const fetchModelPreference = async () => {
       try {
@@ -64,27 +58,10 @@ function Settings() {
   }, [])
 
   const handleSaveSettings = async () => {
-    if (!apiKey.trim()) {
-      showErrorToast({
-        response: {
-          data: { error: 'API key is required' }
-        }
-      })
-      return
-    }
-
-    // Validate API key format
-    if (!apiKey.startsWith('sk-ant-')) {
-      showWarningToast('API key should start with "sk-ant-" for Claude. Please verify your key.')
-    }
-
     const loadingToastId = showLoadingToast('Saving settings...')
 
     try {
-      // Save to localStorage
-      localStorage.setItem('anthropic_api_key', apiKey)
-
-      // Save model preference to backend
+      // Save model preference to backend (requires login)
       await axios.post('/api/settings/model', { model: claudeModel })
 
       dismissToast(loadingToastId)
@@ -104,16 +81,6 @@ function Settings() {
     }
   }
 
-  const handleClearSettings = () => {
-    if (!confirm('Are you sure you want to clear all settings?')) {
-      return
-    }
-
-    localStorage.removeItem('anthropic_api_key')
-    setApiKey('')
-    showSuccessToast('Settings cleared')
-  }
-
   return (
     <div className="settings-page">
       <div className="settings-container">
@@ -123,49 +90,6 @@ function Settings() {
         </header>
 
         <div className="settings-sections">
-          {/* API Key Section */}
-          <section className="settings-section">
-            <h2>API Configuration</h2>
-            <p className="section-description">Enter your Anthropic API key to enable documentation generation</p>
-
-            <div className="form-group">
-              <label htmlFor="api-key">Anthropic API Key</label>
-              <div className="input-group">
-                <input
-                  id="api-key"
-                  type={showApiKey ? 'text' : 'password'}
-                  className="input-field"
-                  value={apiKey}
-                  onChange={(e) => setApiKey(e.target.value)}
-                  placeholder="sk-ant-api03-..."
-                />
-                <button
-                  className="toggle-visibility-btn"
-                  onClick={() => setShowApiKey(!showApiKey)}
-                  type="button"
-                >
-                  {showApiKey ? (
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <path d="M17.94 17.94A10.07 10.07 0 0112 20c-7 0-11-8-11-8a18.45 18.45 0 015.06-5.94M9.9 4.24A9.12 9.12 0 0112 4c7 0 11 8 11 8a18.5 18.5 0 01-2.16 3.19m-6.72-1.07a3 3 0 11-4.24-4.24" />
-                      <line x1="1" y1="1" x2="23" y2="23" />
-                    </svg>
-                  ) : (
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
-                      <circle cx="12" cy="12" r="3" />
-                    </svg>
-                  )}
-                </button>
-              </div>
-              <p className="input-hint">
-                Get your API key from{' '}
-                <a href="https://console.anthropic.com/" target="_blank" rel="noopener noreferrer">
-                  console.anthropic.com
-                </a>
-              </p>
-            </div>
-          </section>
-
           {/* Claude Model Selection */}
           <section className="settings-section">
             <h2>Claude Model</h2>
@@ -338,9 +262,6 @@ function Settings() {
                 <polyline points="7 3 7 8 15 8" />
               </svg>
               Save Settings
-            </button>
-            <button className="btn btn-secondary" onClick={handleClearSettings}>
-              Clear All Settings
             </button>
           </div>
         </div>

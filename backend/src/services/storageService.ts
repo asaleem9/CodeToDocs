@@ -160,10 +160,11 @@ class DocumentationStorage {
     try {
       const dbDoc = await storageServiceDb.getDocumentation(id);
       if (dbDoc) {
-        // Convert database format to storage format
+        // Convert database format to storage format. Preserve the real owner id
+        // so access-control checks (canAccessDocument / delete) behave correctly.
         const converted: StoredDocumentation = {
           id: dbDoc.id,
-          userId: 0, // Will be filled when we have user lookup
+          userId: dbDoc.ownerGithubId ?? 0,
           documentation: dbDoc.documentation,
           diagram: dbDoc.diagram,
           qualityScore: dbDoc.qualityScore,
@@ -322,9 +323,10 @@ class DocumentationStorage {
   }
 
   /**
-   * Delete a documentation entry
+   * Delete a documentation entry from both the in-memory cache and the database.
+   * Returns true if it was removed from either store.
    */
-  delete(id: string): boolean {
+  async delete(id: string): Promise<boolean> {
     const entry = this.storage.get(id);
     if (entry) {
       // Remove from user index
@@ -336,7 +338,50 @@ class DocumentationStorage {
         }
       }
     }
-    return this.storage.delete(id);
+
+    const memoryDeleted = this.storage.delete(id);
+
+    // Also remove from the database (owner-scoped). We resolve the owner's
+    // GitHub username from the cached entry's userId (GitHub numeric id).
+    let dbDeleted = false;
+    try {
+      if (entry) {
+        const user = await tokenStorageDb.getUserInfoById(entry.userId);
+        if (user) {
+          dbDeleted = await storageServiceDb.deleteDocumentation(id, user.githubUsername);
+        }
+      }
+    } catch (error) {
+      console.error('Failed to delete documentation from database:', error);
+    }
+
+    return memoryDeleted || dbDeleted;
+  }
+
+  /**
+   * Update a document's public/private visibility in memory and the database.
+   * Returns true if the document existed in either store.
+   */
+  async setVisibility(id: string, isPublic: boolean): Promise<boolean> {
+    const entry = this.storage.get(id);
+    if (entry) {
+      entry.isPublic = isPublic;
+      entry.updatedAt = new Date();
+    }
+
+    let dbUpdated = false;
+    try {
+      if (entry) {
+        const user = await tokenStorageDb.getUserInfoById(entry.userId);
+        if (user) {
+          dbUpdated = await storageServiceDb.updateVisibility(id, user.githubUsername, isPublic);
+        }
+      }
+    } catch (error) {
+      console.error('Failed to update visibility in database:', error);
+    }
+
+    return entry !== undefined || dbUpdated;
   }
 
   /**

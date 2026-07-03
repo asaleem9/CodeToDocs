@@ -22,7 +22,8 @@ function Navigation() {
   const isMobile = useIsMobile()
 
   const handleLogin = () => {
-    // Clear any existing GitHub auth data before starting new OAuth flow
+    // Clear any existing auth data before starting new OAuth flow
+    localStorage.removeItem('app_token')
     localStorage.removeItem('github_user')
     localStorage.removeItem('github_token')
     localStorage.removeItem('github_user_id')

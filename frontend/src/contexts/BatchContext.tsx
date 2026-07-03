@@ -37,6 +37,10 @@ export function BatchProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const startProgressPolling = (id: string) => {
+    // Clear any existing poller so back-to-back starts don't leak intervals.
+    if (progressInterval.current) {
+      clearInterval(progressInterval.current)
+    }
     progressInterval.current = setInterval(async () => {
       try {
         const progressRes = await axios.get(`/api/batch/progress/${id}`)

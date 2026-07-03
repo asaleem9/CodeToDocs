@@ -5,29 +5,36 @@ import App from './App'
 import config from './config'
 import './index.css'
 
+// Capture the signed app token from the OAuth redirect fragment (fragments are
+// not sent to servers or included in the Referer header). Store it and clean the
+// URL so it isn't left lying around in history.
+const tokenMatch = window.location.hash.match(/[#&]token=([^&]+)/)
+if (tokenMatch) {
+  localStorage.setItem('app_token', decodeURIComponent(tokenMatch[1]))
+  window.history.replaceState(null, '', window.location.pathname + window.location.search)
+}
+
 // Configure axios base URL
 axios.defaults.baseURL = config.apiUrl
 
-// Add request interceptor to include GitHub user ID in requests to our backend
-axios.interceptors.request.use(
-  (config) => {
-    // Only add custom header for requests to our own backend, not external APIs
-    const isBackendRequest = config.url?.startsWith('/api') || config.url?.startsWith('http://localhost:3001')
+// Also send the session cookie (used for anonymous same-origin/local dev).
+axios.defaults.withCredentials = true
 
-    if (isBackendRequest) {
-      // Check if user is logged in via GitHub OAuth (localStorage token)
-      const githubUserId = localStorage.getItem('github_user_id')
-      if (githubUserId) {
-        // Add custom header with GitHub user ID
-        config.headers['X-GitHub-User-ID'] = githubUserId
-      }
+// Attach the signed app token to our own backend requests. It's verified
+// server-side, so it cannot be forged like the old identity header. We only add
+// it for our backend, never for third-party calls (e.g. api.github.com).
+axios.interceptors.request.use((requestConfig) => {
+  const url = requestConfig.url || ''
+  const isBackendRequest = url.startsWith('/api') || url.startsWith(config.apiUrl)
+  if (isBackendRequest) {
+    const token = localStorage.getItem('app_token')
+    if (token) {
+      requestConfig.headers = requestConfig.headers ?? {}
+      requestConfig.headers['Authorization'] = `Bearer ${token}`
     }
-    return config
-  },
-  (error) => {
-    return Promise.reject(error)
   }
-)
+  return requestConfig
+})
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>

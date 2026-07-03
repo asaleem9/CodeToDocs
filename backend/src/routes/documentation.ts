@@ -1,10 +1,25 @@
 import { Router, Request, Response } from 'express';
+import crypto from 'crypto';
 import { generateDocumentation } from '../services/llmService';
 import { documentationStorage } from '../services/storageService';
 import { QualityScore } from '../services/qualityScoreService';
-import { requireAuth, getUserId, canAccessDocument } from '../middleware/auth';
+import { getStorageUserId, canAccessDocument } from '../middleware/auth';
+import { rateLimit } from '../middleware/rateLimit';
 
 const router = Router();
+
+// Throttle documentation generation (each call fans out to paid LLM requests).
+const generateLimiter = rateLimit({ windowMs: 5 * 60 * 1000, max: 20, keyPrefix: 'generate' });
+
+/**
+ * Whether a requester may read a generation job. Jobs owned by an authenticated
+ * user (non-zero id) are private to that user; anonymous jobs (owner 0) are
+ * protected by their unguessable id.
+ */
+function canAccessJob(ownerId: number, requesterId: number): boolean {
+  if (ownerId === 0) return true;
+  return ownerId === requesterId;
+}
 
 interface GenerateRequest {
   code: string;
@@ -31,20 +46,33 @@ interface JobProgress {
 
 // Store active documentation generation jobs
 const activeJobs = new Map<string, {
+  userId: number;
+  createdAt: number;
   progress: JobProgress;
   result?: GenerateResponse;
   error?: string;
 }>();
+
+// Sweep abandoned/errored jobs so the map can't grow without bound (the
+// post-retrieval cleanup only fires on a successful result fetch).
+const JOB_TTL_MS = 15 * 60 * 1000;
+const jobSweep = setInterval(() => {
+  const now = Date.now();
+  for (const [id, job] of activeJobs.entries()) {
+    if (now - job.createdAt > JOB_TTL_MS) activeJobs.delete(id);
+  }
+}, 5 * 60 * 1000);
+if (typeof jobSweep.unref === 'function') jobSweep.unref();
 
 /**
  * POST /api/generate
  * Generates documentation for the provided code (with progress tracking)
  * Authentication is optional - if authenticated, docs are stored with userId
  */
-router.post('/generate', async (req: Request, res: Response) => {
+router.post('/generate', generateLimiter, async (req: Request, res: Response) => {
   try {
     const { code, language } = req.body as GenerateRequest;
-    const userId = getUserId(req) || 0; // Use 0 for anonymous users
+    const userId = getStorageUserId(req);
 
     // Validate request body
     if (!code || typeof code !== 'string') {
@@ -61,11 +89,13 @@ router.post('/generate', async (req: Request, res: Response) => {
       } as ErrorResponse);
     }
 
-    // Generate job ID
-    const jobId = `job-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    // Generate an unguessable job ID
+    const jobId = `job-${crypto.randomBytes(12).toString('hex')}`;
 
     // Initialize job tracking
     activeJobs.set(jobId, {
+      userId,
+      createdAt: Date.now(),
       progress: {
         percentage: 0,
         status: 'Initializing...',
@@ -160,7 +190,7 @@ router.get('/generate/progress/:jobId', (req: Request, res: Response) => {
 
   const job = activeJobs.get(jobId);
 
-  if (!job) {
+  if (!job || !canAccessJob(job.userId, getStorageUserId(req))) {
     return res.status(404).json({ error: 'Job not found' });
   }
 
@@ -181,7 +211,7 @@ router.get('/generate/result/:jobId', (req: Request, res: Response) => {
 
   const job = activeJobs.get(jobId);
 
-  if (!job) {
+  if (!job || !canAccessJob(job.userId, getStorageUserId(req))) {
     return res.status(404).json({ error: 'Job not found' });
   }
 
@@ -212,7 +242,7 @@ router.get('/generate/result/:jobId', (req: Request, res: Response) => {
  */
 router.get('/documentation', async (req: Request, res: Response) => {
   try {
-    const userId = getUserId(req) || 0; // Use 0 for anonymous users
+    const userId = getStorageUserId(req);
     const view = req.query.view as string;
 
     let docs;
@@ -249,7 +279,7 @@ router.get('/documentation', async (req: Request, res: Response) => {
 router.get('/documentation/:id', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const userId = getUserId(req) || 0; // Use 0 for anonymous users
+    const userId = getStorageUserId(req);
     const doc = await documentationStorage.get(id);
 
     if (!doc) {
@@ -279,6 +309,53 @@ router.get('/documentation/:id', async (req: Request, res: Response) => {
 });
 
 /**
+ * PATCH /api/documentation/:id/visibility
+ * Toggle a document between public and private. Only the owner may change it.
+ */
+router.patch('/documentation/:id/visibility', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const userId = getStorageUserId(req);
+    const { isPublic } = req.body;
+
+    if (typeof isPublic !== 'boolean') {
+      return res.status(400).json({
+        error: 'isPublic (boolean) is required',
+        timestamp: new Date(),
+      } as ErrorResponse);
+    }
+
+    const doc = await documentationStorage.get(id);
+
+    if (!doc) {
+      return res.status(404).json({
+        error: 'Documentation not found',
+        timestamp: new Date(),
+      } as ErrorResponse);
+    }
+
+    // Only the owner can change visibility.
+    if (doc.userId !== userId) {
+      return res.status(403).json({
+        error: 'Access denied',
+        message: 'You can only change visibility of your own documentation',
+        timestamp: new Date(),
+      } as ErrorResponse);
+    }
+
+    await documentationStorage.setVisibility(id, isPublic);
+
+    return res.status(200).json({ id, isPublic });
+  } catch (error) {
+    console.error('Error updating visibility:', error);
+    return res.status(500).json({
+      error: 'Failed to update visibility',
+      timestamp: new Date(),
+    } as ErrorResponse);
+  }
+});
+
+/**
  * DELETE /api/documentation/:id
  * Delete a specific documentation entry
  * Only the owner can delete their own documentation
@@ -287,7 +364,7 @@ router.get('/documentation/:id', async (req: Request, res: Response) => {
 router.delete('/documentation/:id', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const userId = getUserId(req) || 0; // Use 0 for anonymous users
+    const userId = getStorageUserId(req);
     const doc = await documentationStorage.get(id);
 
     if (!doc) {
@@ -306,7 +383,7 @@ router.delete('/documentation/:id', async (req: Request, res: Response) => {
       } as ErrorResponse);
     }
 
-    const deleted = documentationStorage.delete(id);
+    const deleted = await documentationStorage.delete(id);
 
     if (!deleted) {
       return res.status(404).json({
@@ -329,7 +406,7 @@ router.delete('/documentation/:id', async (req: Request, res: Response) => {
 });
 
 /**
- * GET /api/documentation/stats
+ * GET /api/stats
  * Get storage statistics
  */
 router.get('/stats', (req: Request, res: Response) => {

@@ -1,20 +1,130 @@
 import { Link } from 'react-router-dom'
+import { useEffect, useRef, useState } from 'react'
 import Logo from '../components/Logo'
 import './Landing.css'
 
+function useScrollReveal() {
+  const ref = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    const el = ref.current
+    if (!el) return
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) {
+          el.classList.add('revealed')
+          observer.unobserve(el)
+        }
+      },
+      { threshold: 0.15 }
+    )
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [])
+  return ref
+}
+
+function TypingCode() {
+  const code = `function calculateTotal(items) {
+  return items.reduce((sum, item) =>
+    sum + (item.price * item.qty), 0
+  );
+}`
+  const [displayed, setDisplayed] = useState('')
+  const [done, setDone] = useState(false)
+
+  useEffect(() => {
+    let i = 0
+    const interval = setInterval(() => {
+      if (i < code.length) {
+        setDisplayed(code.slice(0, i + 1))
+        i++
+      } else {
+        setDone(true)
+        clearInterval(interval)
+      }
+    }, 28)
+    return () => clearInterval(interval)
+  }, [])
+
+  return (
+    <div className="code-preview">
+      <div className="preview-header">
+        <div className="preview-dots">
+          <span className="dot red" />
+          <span className="dot yellow" />
+          <span className="dot green" />
+        </div>
+        <span className="preview-title">example.ts</span>
+      </div>
+      <pre className="preview-code">
+        {displayed}
+        {!done && <span className="typing-cursor">|</span>}
+      </pre>
+    </div>
+  )
+}
+
+function AnimatedStat({ value, suffix, label }: { value: number; suffix: string; label: string }) {
+  const [count, setCount] = useState(0)
+  const ref = useRef<HTMLDivElement>(null)
+  const started = useRef(false)
+
+  useEffect(() => {
+    const el = ref.current
+    if (!el) return
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting && !started.current) {
+          started.current = true
+          const duration = 1200
+          const steps = 40
+          const increment = value / steps
+          let current = 0
+          const interval = setInterval(() => {
+            current += increment
+            if (current >= value) {
+              setCount(value)
+              clearInterval(interval)
+            } else {
+              setCount(Math.floor(current))
+            }
+          }, duration / steps)
+        }
+      },
+      { threshold: 0.5 }
+    )
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [value])
+
+  return (
+    <div className="stat" ref={ref}>
+      <span className="stat-value">{count}{suffix}</span>
+      <span className="stat-label">{label}</span>
+    </div>
+  )
+}
+
 function Landing() {
+  const statsRef = useScrollReveal()
+  const stepsRef = useScrollReveal()
+  const featuresRef = useScrollReveal()
+  const ctaRef = useScrollReveal()
+
   return (
     <div className="landing-page">
-      {/* Hero Section */}
+      {/* Hero */}
       <section className="hero">
+        <div className="hero-glow hero-glow-1" />
+        <div className="hero-glow hero-glow-2" />
+
         <div className="hero-content">
           <Logo size="large" />
           <h1 className="hero-title">
-            Transform Your Code into Beautiful Documentation
+            Code in. <span className="gradient-text">Docs out.</span>
           </h1>
           <p className="hero-description">
-            AI-powered documentation generator for your codebase.
-            Generate comprehensive, high-quality documentation in seconds.
+            Paste code, get documentation. Instant, scored, visual.
           </p>
           <div className="hero-actions">
             <Link to="/app" className="btn btn-primary">
@@ -24,288 +134,160 @@ function Landing() {
               Get Started
             </Link>
             <a href="#how-it-works" className="btn btn-secondary">
-              Learn More
+              How It Works
             </a>
           </div>
           <div className="mobile-notice">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <rect x="2" y="3" width="20" height="14" rx="2" ry="2" />
               <line x1="8" y1="21" x2="16" y2="21" />
               <line x1="12" y1="17" x2="12" y2="21" />
             </svg>
-            Designed for desktop browsers
+            Desktop recommended
           </div>
         </div>
 
         <div className="hero-visual">
-          <div className="code-preview">
-            <div className="preview-header">
-              <div className="preview-dots">
-                <span className="dot red"></span>
-                <span className="dot yellow"></span>
-                <span className="dot green"></span>
-              </div>
-              <span className="preview-title">example.js</span>
-            </div>
-            <pre className="preview-code">{`function calculateTotal(items) {
-  return items.reduce((sum, item) =>
-    sum + (item.price * item.quantity), 0
-  );
-}`}</pre>
+          <TypingCode />
+          <div className="arrow-indicator">
+            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <line x1="5" y1="12" x2="19" y2="12" />
+              <polyline points="12 5 19 12 12 19" />
+            </svg>
           </div>
-          <div className="arrow-indicator">→</div>
           <div className="docs-preview">
             <div className="preview-header">
               <div className="preview-dots">
-                <span className="dot red"></span>
-                <span className="dot yellow"></span>
-                <span className="dot green"></span>
+                <span className="dot red" />
+                <span className="dot yellow" />
+                <span className="dot green" />
               </div>
               <span className="preview-title">documentation.md</span>
             </div>
             <div className="preview-docs">
-              <h3>Calculate Total</h3>
-              <p>Calculates the total price...</p>
-              <div className="quality-badge">Quality Score: 95</div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* Benefits Section */}
-      <section className="benefits-section" id="benefits">
-        <div className="section-container">
-          <h2 className="section-title">Documentation That Actually Gets Written</h2>
-          <p className="section-subtitle">
-            Not another tool you'll "get to later" — documentation that happens automatically
-          </p>
-
-          <div className="benefits-grid">
-            <div className="benefit-card">
-              <h3>180x Faster</h3>
-              <p>
-                From 15-30 minutes per file to 5-10 seconds. Stop writing documentation,
-                start shipping features.
-              </p>
-              <div className="benefit-stat">Manual: 30 min → AI: 10 sec</div>
-            </div>
-
-            <div className="benefit-card">
-              <h3>Zero Extra Steps</h3>
-              <p>
-                Merge a PR, get documentation. No copy-pasting to ChatGPT, no manual
-                triggers. It just happens in your GitHub workflow.
-              </p>
-              <div className="benefit-stat">Automatic on every merge</div>
-            </div>
-
-            <div className="benefit-card">
-              <h3>Onboard in Hours, Not Weeks</h3>
-              <p>
-                New developers understand your codebase immediately with visual diagrams,
-                examples, and comprehensive explanations for every module.
-              </p>
-              <div className="benefit-stat">Knowledge that stays</div>
-            </div>
-
-            <div className="benefit-card">
-              <h3>Consistent Quality</h3>
-              <p>
-                Every piece of documentation scored 0-100 for completeness. Same high
-                standard across your entire codebase, regardless of who wrote it.
-              </p>
-              <div className="benefit-stat">95+ quality score</div>
-            </div>
-
-            <div className="benefit-card">
-              <h3>Visual Architecture</h3>
-              <p>
-                Auto-generated Mermaid diagrams for every file. See code flow,
-                relationships, and architecture at a glance.
-              </p>
-              <div className="benefit-stat">Diagrams included</div>
-            </div>
-
-            <div className="benefit-card">
-              <h3>Knowledge Retention</h3>
-              <p>
-                When developers leave, their knowledge stays. Every merged PR creates
-                an automatic knowledge base for your team.
-              </p>
-              <div className="benefit-stat">10% → 95% coverage</div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* Core Features Section */}
-      <section className="benefits-section" id="features">
-        <div className="section-container">
-          <h2 className="section-title">Core Features</h2>
-          <p className="section-subtitle">
-            Everything you need to automate documentation across your entire codebase
-          </p>
-
-          <div className="benefits-grid">
-            <div className="benefit-card">
-              <h3>Single File Documentation</h3>
-              <p>
-                Paste code or upload files to generate instant documentation with
-                examples, parameters, and return values. Perfect for quick docs.
-              </p>
-              <div className="benefit-stat">In 5-10 seconds</div>
-            </div>
-
-            <div className="benefit-card">
-              <h3>Batch Repository Processing</h3>
-              <p>
-                Document entire GitHub repositories at once. Processes up to 50 files
-                concurrently with real-time progress tracking.
-              </p>
-              <div className="benefit-stat">Full repo in minutes</div>
-            </div>
-
-            <div className="benefit-card">
-              <h3>GitHub Webhook Integration</h3>
-              <p>
-                Automatically document every merged PR. Set it once, and documentation
-                happens in the background—forever.
-              </p>
-              <div className="benefit-stat">Zero manual work</div>
-            </div>
-
-            <div className="benefit-card">
-              <h3>Quality Scoring System</h3>
-              <p>
-                Every document scored 0-100 for completeness. Ensures consistent
-                quality across examples, parameters, and best practices.
-              </p>
-              <div className="benefit-stat">95+ average score</div>
-            </div>
-
-            <div className="benefit-card">
-              <h3>Visual Mermaid Diagrams</h3>
-              <p>
-                Auto-generated flowcharts and architecture diagrams for every file.
-                See code relationships and logic flow instantly.
-              </p>
-              <div className="benefit-stat">Every file visualized</div>
-            </div>
-
-            <div className="benefit-card">
-              <h3>Documentation History</h3>
-              <p>
-                Track all generated documentation with timestamps, quality scores,
-                and PR metadata. Search, filter, and revisit past docs anytime.
-              </p>
-              <div className="benefit-stat">Full audit trail</div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* Webhook Setup Section */}
-      <section className="webhook-section" id="webhook-setup">
-        <div className="section-container">
-          <h2 className="section-title">GitHub Webhook Integration</h2>
-          <p className="section-subtitle">
-            Automate documentation generation when PRs are merged
-          </p>
-
-          <div className="webhook-content">
-            <div className="webhook-info">
-              <div className="info-card">
-                <h3>Why Use Webhooks?</h3>
-                <ul>
-                  <li>
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <polyline points="20 6 9 17 4 12" />
-                    </svg>
-                    Automatically generate docs when code changes
-                  </li>
-                  <li>
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <polyline points="20 6 9 17 4 12" />
-                    </svg>
-                    Keep documentation always in sync with codebase
-                  </li>
-                  <li>
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <polyline points="20 6 9 17 4 12" />
-                    </svg>
-                    Track documentation by PR number and author
-                  </li>
-                  <li>
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <polyline points="20 6 9 17 4 12" />
-                    </svg>
-                    No manual intervention required
-                  </li>
-                </ul>
-              </div>
-
-              <div className="setup-steps">
-                <h3>Setup Instructions</h3>
-                <ol>
-                  <li>
-                    <strong>Get Your Webhook URL:</strong>
-                    <p>Find it in <Link to="/app/settings">Settings</Link> page</p>
-                    <div className="code-snippet">
-                      <code>https://your-domain.com/api/webhook/github</code>
-                    </div>
-                  </li>
-                  <li>
-                    <strong>Configure GitHub Webhook:</strong>
-                    <p>Go to your repository → Settings → Webhooks → Add webhook</p>
-                  </li>
-                  <li>
-                    <strong>Set Webhook Details:</strong>
-                    <ul className="webhook-details">
-                      <li><strong>Payload URL:</strong> Your webhook URL from step 1</li>
-                      <li><strong>Content type:</strong> application/json</li>
-                      <li><strong>Secret:</strong> Your GITHUB_WEBHOOK_SECRET from .env</li>
-                      <li><strong>Events:</strong> Select "Pull requests"</li>
-                    </ul>
-                  </li>
-                  <li>
-                    <strong>Test It:</strong>
-                    <p>Merge a PR and check the <Link to="/app/history">History</Link> page for auto-generated docs</p>
-                  </li>
-                </ol>
-              </div>
-            </div>
-
-            <div className="webhook-diagram">
-              <div className="diagram-box">
-                <div className="diagram-item">
-                  <span className="diagram-icon">PR Merged</span>
-                </div>
-                <div className="diagram-arrow">↓</div>
-                <div className="diagram-item">
-                  <span className="diagram-icon">Webhook</span>
-                </div>
-                <div className="diagram-arrow">↓</div>
-                <div className="diagram-item">
-                  <span className="diagram-icon">Process</span>
-                </div>
-                <div className="diagram-arrow">↓</div>
-                <div className="diagram-item">
-                  <span className="diagram-icon">Docs</span>
-                  <span>Documentation Generated</span>
-                </div>
+              <h3>calculateTotal</h3>
+              <p>Computes the total price of items in a cart by summing each item's price multiplied by its quantity.</p>
+              <div className="quality-badge">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <polyline points="20 6 9 17 4 12" />
+                </svg>
+                Quality: 95
               </div>
             </div>
           </div>
         </div>
       </section>
 
-      {/* CTA Section */}
-      <section className="cta-section">
-        <div className="cta-content">
-          <h2>Ready to Transform Your Documentation?</h2>
-          <p>Start generating AI-powered documentation in minutes</p>
+      {/* Stats */}
+      <section className="stats-section" ref={statsRef}>
+        <div className="scroll-reveal">
+          <AnimatedStat value={180} suffix="x" label="Faster than manual" />
+          <div className="stat-divider" />
+          <AnimatedStat value={10} suffix="s" label="Per file, average" />
+          <div className="stat-divider" />
+          <AnimatedStat value={95} suffix="+" label="Quality score" />
+        </div>
+      </section>
+
+      {/* How It Works */}
+      <section className="steps-section" id="how-it-works" ref={stepsRef}>
+        <div className="section-container scroll-reveal">
+          <h2 className="section-title">Three steps. That's it.</h2>
+
+          <div className="steps-row">
+            <div className="step-card">
+              <div className="step-number">1</div>
+              <div className="step-icon">
+                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                  <polyline points="16 18 22 12 16 6" />
+                  <polyline points="8 6 2 12 8 18" />
+                </svg>
+              </div>
+              <h3>Paste your code</h3>
+              <p>Drop a file or paste a snippet</p>
+            </div>
+
+            <div className="step-connector" />
+
+            <div className="step-card">
+              <div className="step-number">2</div>
+              <div className="step-icon">
+                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                  <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" />
+                </svg>
+              </div>
+              <h3>AI generates docs</h3>
+              <p>Comprehensive, scored, with diagrams</p>
+            </div>
+
+            <div className="step-connector" />
+
+            <div className="step-card">
+              <div className="step-number">3</div>
+              <div className="step-icon">
+                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                  <polyline points="14 2 14 8 20 8" />
+                  <line x1="16" y1="13" x2="8" y2="13" />
+                  <line x1="16" y1="17" x2="8" y2="17" />
+                </svg>
+              </div>
+              <h3>Export or automate</h3>
+              <p>PDF, Markdown, or auto via webhooks</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Features */}
+      <section className="features-section" id="features" ref={featuresRef}>
+        <div className="section-container scroll-reveal">
+          <h2 className="section-title">Built for real workflows</h2>
+
+          <div className="features-grid">
+            <div className="feature-card">
+              <div className="feature-icon-wrap teal">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                  <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
+                  <polyline points="22 4 12 14.01 9 11.01" />
+                </svg>
+              </div>
+              <h3>Batch Processing</h3>
+              <p>Document entire repos at once. 50 files concurrently with real-time progress.</p>
+            </div>
+
+            <div className="feature-card">
+              <div className="feature-icon-wrap amber">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                  <path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22" />
+                </svg>
+              </div>
+              <h3>GitHub Webhooks</h3>
+              <p>Merge a PR, get docs automatically. Zero manual steps, forever.</p>
+            </div>
+
+            <div className="feature-card">
+              <div className="feature-icon-wrap indigo">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                  <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+                  <line x1="3" y1="9" x2="21" y2="9" />
+                  <line x1="9" y1="21" x2="9" y2="9" />
+                </svg>
+              </div>
+              <h3>Visual Diagrams</h3>
+              <p>Auto-generated Mermaid flowcharts for every file. Architecture at a glance.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* CTA */}
+      <section className="cta-section" ref={ctaRef}>
+        <div className="cta-glow" />
+        <div className="cta-content scroll-reveal">
+          <h2>Start documenting in seconds</h2>
           <Link to="/app" className="btn btn-primary btn-large">
-            Get Started Now
+            Try it now
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <line x1="5" y1="12" x2="19" y2="12" />
               <polyline points="12 5 19 12 12 19" />
@@ -319,25 +301,11 @@ function Landing() {
         <div className="footer-content">
           <div className="footer-section">
             <Logo size="small" showText={true} />
-            <p>AI-powered documentation for modern development teams</p>
           </div>
-          <div className="footer-section">
-            <h4>Product</h4>
-            <Link to="/app">Home</Link>
-            <Link to="/app/history">History</Link>
-            <Link to="/app/settings">Settings</Link>
-          </div>
-          <div className="footer-section">
-            <h4>Resources</h4>
+          <div className="footer-links">
+            <Link to="/app">App</Link>
             <a href="#how-it-works">How It Works</a>
-            <a href="#webhook-setup">Webhook Setup</a>
-            <a href="#benefits">Benefits</a>
-          </div>
-          <div className="footer-section">
-            <h4>Technology</h4>
-            <a href="https://mermaid.js.org/" target="_blank" rel="noopener noreferrer">Mermaid</a>
-            <a href="https://react.dev/" target="_blank" rel="noopener noreferrer">React</a>
-            <a href="https://nodejs.org/" target="_blank" rel="noopener noreferrer">Node.js</a>
+            <a href="#features">Features</a>
           </div>
         </div>
         <div className="footer-bottom">

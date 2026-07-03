@@ -11,6 +11,7 @@ export interface DocumentationEntry {
   timestamp: Date;
   type?: 'single' | 'batch' | 'pr';
   isPublic?: boolean;
+  ownerGithubId?: number; // GitHub numeric id of the owning user
   qualityScore?: {
     score: number;
     breakdown: {
@@ -147,6 +148,11 @@ export class StorageServiceDb {
         return undefined;
       }
 
+      // Resolve the owner's GitHub id so callers can enforce access control.
+      const owner = await db.query.users.findFirst({
+        where: eq(users.id, doc.userId),
+      });
+
       return {
         id: doc.id,
         documentation: doc.documentation,
@@ -156,6 +162,7 @@ export class StorageServiceDb {
         timestamp: doc.createdAt!,
         type: (doc.type as 'single' | 'batch' | 'pr') || 'single',
         isPublic: doc.isPublic || false,
+        ownerGithubId: owner?.githubId,
         qualityScore: doc.qualityScore as any,
         batchInfo: doc.batchInfo as any,
         prInfo: doc.prInfo as any,

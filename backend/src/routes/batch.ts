@@ -1,13 +1,52 @@
 import express, { Request, Response } from 'express';
+import crypto from 'crypto';
 import multer from 'multer';
 import AdmZip from 'adm-zip';
 import * as path from 'path';
 import * as fs from 'fs/promises';
 import { processRepository, BatchProgress, generateFullRepoDocumentation, scanCodeFiles, processBatch, generateTableOfContents, generateBatchSummary } from '../utils/batchProcessor';
 import { documentationStorage } from '../services/storageService';
-import { requireAuth, getUserId } from '../middleware/auth';
+import { getStorageUserId } from '../middleware/auth';
+import { rateLimit } from '../middleware/rateLimit';
 
 const router = express.Router();
+
+// Batch runs are the most expensive path (many LLM calls per request) - throttle
+// harder than single-file generation.
+const batchLimiter = rateLimit({ windowMs: 10 * 60 * 1000, max: 5, keyPrefix: 'batch' });
+
+/**
+ * Generate an unguessable batch id so batch progress/results can't be
+ * enumerated by a third party.
+ */
+function generateBatchId(): string {
+  return `batch-${crypto.randomBytes(12).toString('hex')}`;
+}
+
+/**
+ * Whether a requester may access a batch. A batch owned by an authenticated
+ * user (non-zero id) is only accessible to that user. A batch created
+ * anonymously (owner 0) is protected by its unguessable id (capability).
+ */
+function canAccessBatch(ownerId: number, requesterId: number): boolean {
+  if (ownerId === 0) return true;
+  return ownerId === requesterId;
+}
+
+/**
+ * Extract a zip safely, rejecting entries whose path would escape the target
+ * directory (zip-slip / path traversal). Validates every entry before writing.
+ */
+function safeExtractZip(zip: AdmZip, extractDir: string): void {
+  const resolvedRoot = path.resolve(extractDir);
+  for (const entry of zip.getEntries()) {
+    const targetPath = path.resolve(resolvedRoot, entry.entryName);
+    if (targetPath !== resolvedRoot && !targetPath.startsWith(resolvedRoot + path.sep)) {
+      throw new Error(`Blocked unsafe zip entry outside extraction directory: ${entry.entryName}`);
+    }
+  }
+  zip.extractAllTo(extractDir, true);
+}
 
 // Configure multer for file uploads
 const upload = multer({
@@ -27,21 +66,32 @@ const upload = multer({
 // Store active batch jobs with user ID
 const activeBatches = new Map<string, {
   userId: number;
+  createdAt: number;
   progress: BatchProgress;
   completedDocuments: any[];
   result?: any;
   error?: string;
 }>();
 
+// Sweep abandoned/errored batches so the map can't grow without bound.
+const BATCH_TTL_MS = 30 * 60 * 1000;
+const batchSweep = setInterval(() => {
+  const now = Date.now();
+  for (const [id, batch] of activeBatches.entries()) {
+    if (now - batch.createdAt > BATCH_TTL_MS) activeBatches.delete(id);
+  }
+}, 5 * 60 * 1000);
+if (typeof batchSweep.unref === 'function') batchSweep.unref();
+
 /**
  * POST /api/batch/start
  * Start batch processing of a repository
  * Authentication is optional - if authenticated, docs are stored with userId
  */
-router.post('/start', async (req: Request, res: Response) => {
+router.post('/start', batchLimiter, async (req: Request, res: Response) => {
   try {
     const { repoUrl, options } = req.body;
-    const userId = getUserId(req) || 0; // Use 0 for anonymous users
+    const userId = getStorageUserId(req);
 
     if (!repoUrl) {
       return res.status(400).json({ error: 'Repository URL is required' });
@@ -54,12 +104,13 @@ router.post('/start', async (req: Request, res: Response) => {
       });
     }
 
-    // Generate batch ID
-    const batchId = `batch-${Date.now()}`;
+    // Generate an unguessable batch ID
+    const batchId = generateBatchId();
 
     // Initialize batch tracking
     activeBatches.set(batchId, {
       userId,
+      createdAt: Date.now(),
       completedDocuments: [],
       progress: {
         total: 0,
@@ -136,9 +187,9 @@ router.post('/start', async (req: Request, res: Response) => {
  * Upload a zipped repository for batch processing
  * Authentication is optional - if authenticated, docs are stored with userId
  */
-router.post('/upload-zip', upload.single('zipFile'), async (req: Request, res: Response) => {
+router.post('/upload-zip', batchLimiter, upload.single('zipFile'), async (req: Request, res: Response) => {
   try {
-    const userId = getUserId(req) || 0; // Use 0 for anonymous users
+    const userId = getStorageUserId(req);
     const file = req.file;
     const options = req.body.options ? JSON.parse(req.body.options) : {};
 
@@ -146,12 +197,13 @@ router.post('/upload-zip', upload.single('zipFile'), async (req: Request, res: R
       return res.status(400).json({ error: 'No file uploaded' });
     }
 
-    // Generate batch ID
-    const batchId = `batch-${Date.now()}`;
+    // Generate an unguessable batch ID
+    const batchId = generateBatchId();
 
     // Initialize batch tracking
     activeBatches.set(batchId, {
       userId,
+      createdAt: Date.now(),
       completedDocuments: [],
       progress: {
         total: 0,
@@ -171,10 +223,10 @@ router.post('/upload-zip', upload.single('zipFile'), async (req: Request, res: R
       try {
         // Extract zip file
         const zip = new AdmZip(file.path);
-        extractDir = path.join('/tmp', `extracted-${Date.now()}`);
+        extractDir = path.join('/tmp', `extracted-${crypto.randomBytes(8).toString('hex')}`);
 
         console.log(`Extracting zip to: ${extractDir}`);
-        zip.extractAllTo(extractDir, true);
+        safeExtractZip(zip, extractDir);
 
         // Update progress
         const batch = activeBatches.get(batchId);
@@ -331,7 +383,7 @@ router.get('/progress/:batchId', (req: Request, res: Response) => {
 
   const batch = activeBatches.get(batchId);
 
-  if (!batch) {
+  if (!batch || !canAccessBatch(batch.userId, getStorageUserId(req))) {
     return res.status(404).json({ error: 'Batch job not found' });
   }
 
@@ -358,7 +410,7 @@ router.get('/result/:batchId', (req: Request, res: Response) => {
 
   const batch = activeBatches.get(batchId);
 
-  if (!batch) {
+  if (!batch || !canAccessBatch(batch.userId, getStorageUserId(req))) {
     return res.status(404).json({ error: 'Batch job not found' });
   }
 
@@ -388,7 +440,8 @@ router.get('/result/:batchId', (req: Request, res: Response) => {
 router.delete('/:batchId', (req: Request, res: Response) => {
   const { batchId } = req.params;
 
-  if (activeBatches.has(batchId)) {
+  const batch = activeBatches.get(batchId);
+  if (batch && canAccessBatch(batch.userId, getStorageUserId(req))) {
     activeBatches.delete(batchId);
     res.json({ message: 'Batch job canceled' });
   } else {
@@ -400,13 +453,13 @@ router.delete('/:batchId', (req: Request, res: Response) => {
  * POST /api/batch/generate-full-doc/:batchId
  * Generate comprehensive full-repository documentation
  */
-router.post('/generate-full-doc/:batchId', async (req: Request, res: Response) => {
+router.post('/generate-full-doc/:batchId', batchLimiter, async (req: Request, res: Response) => {
   try {
     const { batchId } = req.params;
 
     const batch = activeBatches.get(batchId);
 
-    if (!batch) {
+    if (!batch || !canAccessBatch(batch.userId, getStorageUserId(req))) {
       return res.status(404).json({ error: 'Batch job not found' });
     }
 

@@ -63,8 +63,13 @@ function verifyGitHubSignature(req: Request, rawBody: Buffer): boolean {
   const secret = process.env.GITHUB_WEBHOOK_SECRET;
 
   if (!secret) {
-    console.warn('GITHUB_WEBHOOK_SECRET not configured - skipping signature verification');
-    return true; // Allow in development
+    // Fail closed in production: without a secret we cannot trust the payload.
+    if (process.env.NODE_ENV === 'production') {
+      console.error('GITHUB_WEBHOOK_SECRET not configured - rejecting webhook');
+      return false;
+    }
+    console.warn('GITHUB_WEBHOOK_SECRET not configured - skipping verification (development only)');
+    return true;
   }
 
   if (!signature) {
@@ -88,7 +93,9 @@ function verifyGitHubSignature(req: Request, rawBody: Buffer): boolean {
  */
 function filterCodeFiles(files: GitHubFile[]): GitHubFile[] {
   return files.filter(file => {
-    const extension = file.filename.substring(file.filename.lastIndexOf('.'));
+    const dotIndex = file.filename.lastIndexOf('.');
+    if (dotIndex < 0) return false; // no extension
+    const extension = file.filename.substring(dotIndex);
     return CODE_EXTENSIONS.includes(extension);
   });
 }
@@ -102,6 +109,17 @@ router.post('/github', async (req: Request, res: Response) => {
     // Get raw body (it's a Buffer when using express.raw())
     const rawBody = req.body as Buffer;
 
+    // GitHub always sends application/json; anything else isn't a valid webhook.
+    if (!Buffer.isBuffer(rawBody)) {
+      return res.status(400).json({ error: 'Expected application/json body' });
+    }
+
+    // Verify the webhook signature over the raw body BEFORE parsing anything.
+    if (!verifyGitHubSignature(req, rawBody)) {
+      console.error('Invalid webhook signature');
+      return res.status(401).json({ error: 'Invalid signature' });
+    }
+
     // Parse JSON payload
     let payload: any;
     try {
@@ -109,12 +127,6 @@ router.post('/github', async (req: Request, res: Response) => {
     } catch (error) {
       console.error('Failed to parse webhook payload:', error);
       return res.status(400).json({ error: 'Invalid JSON payload' });
-    }
-
-    // Verify webhook signature using raw body
-    if (!verifyGitHubSignature(req, rawBody)) {
-      console.error('Invalid webhook signature');
-      return res.status(401).json({ error: 'Invalid signature' });
     }
 
     const event = req.headers['x-github-event'] as string;
@@ -172,8 +184,11 @@ router.post('/github', async (req: Request, res: Response) => {
     console.log(`  Author: ${prData.author}`);
     console.log(`  Branch: ${prData.branch}`);
 
-    // Store PR data
+    // Store PR data (cap the queue so it can't grow without bound)
     prQueue.push(prData);
+    if (prQueue.length > 100) {
+      prQueue.splice(0, prQueue.length - 100);
+    }
 
     // Update webhook status
     webhookStatus.recentEvents.unshift({

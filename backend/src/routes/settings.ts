@@ -1,5 +1,6 @@
 import express, { Request, Response, Router } from 'express';
 import { settingsService, ClaudeModel } from '../services/settingsService';
+import { requireAuth } from '../middleware/auth';
 
 const router: Router = express.Router();
 
@@ -41,7 +42,7 @@ router.get('/model', (req: Request, res: Response) => {
  * POST /api/settings/model
  * Update Claude model preference
  */
-router.post('/model', (req: Request, res: Response) => {
+router.post('/model', requireAuth, (req: Request, res: Response) => {
   try {
     const { model } = req.body;
 
@@ -84,7 +85,7 @@ router.post('/model', (req: Request, res: Response) => {
  * PATCH /api/settings
  * Update user settings
  */
-router.patch('/', (req: Request, res: Response) => {
+router.patch('/', requireAuth, (req: Request, res: Response) => {
   try {
     const updates = req.body;
 
@@ -113,7 +114,7 @@ router.patch('/', (req: Request, res: Response) => {
  * POST /api/settings/reset
  * Reset settings to defaults
  */
-router.post('/reset', (req: Request, res: Response) => {
+router.post('/reset', requireAuth, (req: Request, res: Response) => {
   try {
     const settings = settingsService.resetSettings();
 

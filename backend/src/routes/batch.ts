@@ -6,7 +6,8 @@ import * as path from 'path';
 import * as fs from 'fs/promises';
 import { processRepository, BatchProgress, generateFullRepoDocumentation, scanCodeFiles, processBatch, generateTableOfContents, generateBatchSummary } from '../utils/batchProcessor';
 import { documentationStorage } from '../services/storageService';
-import { getStorageUserId } from '../middleware/auth';
+import { getStorageUserId, getUserId } from '../middleware/auth';
+import { tokenStorage } from '../services/tokenStorage';
 import { rateLimit } from '../middleware/rateLimit';
 
 const router = express.Router();
@@ -95,6 +96,11 @@ router.post('/start', batchLimiter, async (req: Request, res: Response) => {
     const { repoUrl, options } = req.body;
     const userId = getStorageUserId(req);
 
+    // If the caller is signed in, use their GitHub token for the repo fetch so
+    // it isn't rate-limited (60/hr unauthenticated) and can read private repos.
+    const githubUserId = getUserId(req);
+    const userToken = githubUserId ? (await tokenStorage.get(githubUserId)) || undefined : undefined;
+
     if (!repoUrl) {
       return res.status(400).json({ error: 'Repository URL is required' });
     }
@@ -147,7 +153,8 @@ router.post('/start', batchLimiter, async (req: Request, res: Response) => {
         if (batch) {
           batch.completedDocuments.push(doc);
         }
-      }
+      },
+      userToken
     )
       .then((result) => {
         const batch = activeBatches.get(batchId);

@@ -66,7 +66,8 @@ export async function fetchRepositoryContents(
     maxFiles?: number;
     maxFileSize?: number;
     extensions?: string[];
-  } = {}
+  } = {},
+  token?: string
 ): Promise<FileToDocument[]> {
   const { owner, repo } = parseGitHubUrl(repoUrl);
   const {
@@ -78,7 +79,9 @@ export async function fetchRepositoryContents(
   const files: FileToDocument[] = [];
   const apiBase = 'https://api.github.com';
 
-  const githubToken = process.env.GITHUB_TOKEN;
+  // Prefer the caller's token (raises the rate limit to 5000/hr and unlocks
+  // private repos); fall back to a deployment token if configured.
+  const githubToken = token || process.env.GITHUB_TOKEN;
   const headers: Record<string, string> = {
     'Accept': 'application/vnd.github.v3+json',
     'User-Agent': 'CodeToDocsAI',
@@ -638,13 +641,15 @@ export async function processRepository(
     extensions?: string[];
   } = {},
   onProgress?: (progress: BatchProgress) => void,
-  onFileComplete?: (doc: DocumentedFile) => void
+  onFileComplete?: (doc: DocumentedFile) => void,
+  token?: string
 ): Promise<BatchResult> {
   try {
     console.log(`Starting batch processing for: ${repoUrl}`);
 
-    // Fetch repository contents using GitHub API
-    const files = await fetchRepositoryContents(repoUrl, options);
+    // Fetch repository contents using GitHub API (authenticated when the caller
+    // provided a token).
+    const files = await fetchRepositoryContents(repoUrl, options, token);
 
     if (files.length === 0) {
       throw new Error('No code files found in repository');

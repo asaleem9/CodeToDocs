@@ -98,15 +98,19 @@ was the fixed reference; Batch caps its detail panel with `max-height`.
 
 ## Known limitations (current production)
 
-These are environmental / not-yet-addressed, not regressions — keep them in mind when debugging:
+These are environmental, not regressions — keep them in mind when debugging:
 
-- **Single-instance assumptions.** `activeBatches` / `activeJobs` and express-session's MemoryStore
-  live in one instance's memory, but the service runs `--max-instances 3`. A request routed to a
-  different instance than the one that started the job will 404. Fix: `--max-instances 1`, or move
-  job/session state to a shared store.
-- **No `GITHUB_TOKEN`.** Batch repo fetching (`batchProcessor.fetchRepositoryContents`) uses the
-  unauthenticated GitHub API (60 req/hr) and does not fall back to the caller's OAuth token, so
-  large or private repos rate-limit. Fix: wire a `GITHUB_TOKEN` secret and/or pass the user's token.
+- **Single instance by design.** `activeBatches` / `activeJobs` and express-session's MemoryStore
+  are per-instance, so the backend deploys with `--max-instances 1` to keep that state consistent
+  (progress/result polling always hits the instance that started the job). Tradeoff: no horizontal
+  scale-out; and a cold start (`--min-instances 0`) still drops in-memory state — in-flight jobs,
+  sessions, and cached OAuth tokens. Moving job/session state to a shared store would lift the cap.
+- **Batch GitHub auth.** `fetchRepositoryContents` uses the signed-in user's OAuth token (passed
+  from `routes/batch.ts` → `processRepository`), giving 5000 req/hr + private-repo access, and falls
+  back to `process.env.GITHUB_TOKEN` if set. Two gaps remain: anonymous batches still use the
+  unauthenticated 60 req/hr limit (set a `GITHUB_TOKEN` deployment secret for a global fallback), and
+  because OAuth tokens are in-memory, a returning user must re-auth after a cold start for their
+  token to be available.
 - **In-memory only** (`DATABASE_URL` unset): history and stored OAuth tokens don't survive a restart.
 - **Anonymous persistence is cookie-based.** The document list (`/api/documentation`) scopes by the
   per-session `anonId` cookie, which Safari/Firefox drop cross-site, so anonymous history can appear

@@ -25,11 +25,13 @@ function generateBatchId(): string {
 
 /**
  * Whether a requester may access a batch. A batch owned by an authenticated
- * user (non-zero id) is only accessible to that user. A batch created
- * anonymously (owner 0) is protected by its unguessable id (capability).
+ * user (positive GitHub id) is only accessible to that user. Anonymous batches
+ * (owner id <= 0: legacy 0 or a per-session anonymous id that does not survive
+ * cross-site requests) are protected by their unguessable batch id, so we treat
+ * the id itself as the capability rather than requiring an identity match.
  */
 function canAccessBatch(ownerId: number, requesterId: number): boolean {
-  if (ownerId === 0) return true;
+  if (ownerId <= 0) return true;
   return ownerId === requesterId;
 }
 

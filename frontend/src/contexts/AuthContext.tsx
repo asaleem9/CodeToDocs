@@ -66,7 +66,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       console.error('Error logging out:', error)
     } finally {
       setUser(null)
-      // Clear any cached GitHub-related localStorage items
+      // Clear the app token and any cached GitHub-related localStorage items
+      localStorage.removeItem('app_token')
       localStorage.removeItem('github_user')
       localStorage.removeItem('github_token')
       localStorage.removeItem('github_user_id')

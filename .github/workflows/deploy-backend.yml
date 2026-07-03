@@ -48,7 +48,7 @@ jobs:
             --platform managed \
             --allow-unauthenticated \
             --set-env-vars NODE_ENV=production \
-            --set-secrets ANTHROPIC_API_KEY=codetodocs-anthropic-api-key:latest,FRONTEND_URL=codetodocs-frontend-url:latest,SESSION_SECRET=codetodocs-session-secret:latest,DATABASE_ENCRYPTION_KEY=codetodocs-database-encryption-key:latest \
+            --set-secrets ANTHROPIC_API_KEY=codetodocs-anthropic-api-key:latest,FRONTEND_URL=codetodocs-frontend-url:latest,SESSION_SECRET=codetodocs-session-secret:latest,DATABASE_ENCRYPTION_KEY=codetodocs-database-encryption-key:latest,GITHUB_CLIENT_ID=codetodocs-github-client-id:latest,GITHUB_CLIENT_SECRET=codetodocs-github-client-secret:latest \
             --memory 512Mi \
             --cpu 1 \
             --max-instances 3 \

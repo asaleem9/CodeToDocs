@@ -1,12 +1,32 @@
 import { Request, Response, NextFunction } from 'express';
 import crypto from 'crypto';
+import { verifyToken, AppTokenUser } from '../utils/appToken';
+
+/**
+ * Resolve the authenticated user from the request. Prefers the signed bearer
+ * token (works cross-origin on *.run.app); falls back to the session cookie
+ * (used same-origin / in local dev). Returns null if not authenticated.
+ */
+export function getAuthUser(req: Request): AppTokenUser | null {
+  const header = req.headers['authorization'];
+  if (header && header.startsWith('Bearer ')) {
+    const user = verifyToken(header.slice('Bearer '.length));
+    if (user) return user;
+  }
+
+  if (req.session?.user) {
+    return req.session.user as AppTokenUser;
+  }
+
+  return null;
+}
 
 /**
  * Middleware to check if user is authenticated
  * Requires a valid session with user information
  */
 export function requireAuth(req: Request, res: Response, next: NextFunction) {
-  if (!req.session?.user) {
+  if (!getAuthUser(req)) {
     return res.status(401).json({
       error: 'Authentication required',
       message: 'Please log in to access this resource',
@@ -24,11 +44,7 @@ export function requireAuth(req: Request, res: Response, next: NextFunction) {
  * Returns null if not authenticated.
  */
 export function getUserId(req: Request): number | null {
-  if (req.session?.user?.id) {
-    return req.session.user.id;
-  }
-
-  return null;
+  return getAuthUser(req)?.id ?? null;
 }
 
 /**

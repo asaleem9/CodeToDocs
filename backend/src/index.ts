@@ -46,9 +46,10 @@ const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
 // real client connection (needed for correct rate limiting and cookie flags).
 app.set('trust proxy', 1);
 
-// CORS configuration
+// CORS configuration. Normalize a trailing slash so the allowed origin matches
+// the browser's Origin header exactly (browsers send the origin with no path).
 app.use(cors({
-  origin: frontendUrl,
+  origin: frontendUrl.replace(/\/$/, ''),
   credentials: true
 }));
 

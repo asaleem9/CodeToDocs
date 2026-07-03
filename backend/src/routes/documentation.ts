@@ -13,11 +13,12 @@ const generateLimiter = rateLimit({ windowMs: 5 * 60 * 1000, max: 20, keyPrefix:
 
 /**
  * Whether a requester may read a generation job. Jobs owned by an authenticated
- * user (non-zero id) are private to that user; anonymous jobs (owner 0) are
- * protected by their unguessable id.
+ * user (positive GitHub id) are private to that user. Anonymous jobs (owner id
+ * <= 0, whose per-session id does not survive cross-site requests) are protected
+ * by their unguessable job id, which acts as the capability.
  */
 function canAccessJob(ownerId: number, requesterId: number): boolean {
-  if (ownerId === 0) return true;
+  if (ownerId <= 0) return true;
   return ownerId === requesterId;
 }
 

@@ -3,7 +3,13 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import axios from 'axios'
 import { useAuth } from '../contexts/AuthContext'
 import { showErrorToast, showSuccessToast } from '../utils/errorHandler'
-import './GitHub.css'
+import { useGSAP, bootSequence } from '../lib/motion'
+import { getLanguageColor } from '../lib/languages'
+import Panel from '../components/ui/Panel'
+import Button from '../components/ui/Button'
+import Badge from '../components/ui/Badge'
+import Spinner from '../components/ui/Spinner'
+import EmptyState from '../components/ui/EmptyState'
 
 interface GitHubRepository {
   id: number
@@ -18,6 +24,16 @@ interface GitHubRepository {
   private: boolean
 }
 
+const GITHUB_MARK = (
+  <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z" />
+)
+
+const FEATURES = [
+  'Access all your repositories',
+  'Generate documentation automatically',
+  'Select specific repositories to document',
+]
+
 function GitHub() {
   const [githubToken, setGithubToken] = useState<string>('')
   const [username, setUsername] = useState<string>('')
@@ -30,6 +46,15 @@ function GitHub() {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const { user, isAuthenticated } = useAuth()
+  const scopeRef = useRef<HTMLDivElement>(null)
+
+  // page boot-in; re-runs when the view flips between auth and repo grid
+  useGSAP(
+    () => {
+      if (scopeRef.current) bootSequence(scopeRef.current)
+    },
+    { dependencies: [showTokenInput], scope: scopeRef }
+  )
 
   // Handle OAuth success callback. The access token is NOT in the URL - it lives
   // in the server session. We only receive the public profile for display and
@@ -243,214 +268,204 @@ function GitHub() {
 
   if (showTokenInput) {
     return (
-      <div className="github-page">
-        <div className="github-container">
-          <div className="github-auth-card">
-            <div className="auth-icon">
-              <svg width="64" height="64" viewBox="0 0 24 24" fill="currentColor">
-                <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/>
+      <div
+        ref={scopeRef}
+        className="github-page mx-auto flex w-full max-w-[1400px]! flex-1 min-h-0 flex-col gap-5 p-6"
+      >
+        <div data-boot style={{ opacity: 0 }} className="py-8">
+          <Panel
+            title="GITHUB ACCESS"
+            className="mx-auto w-full max-w-xl"
+            contentClassName="gap-7 p-8"
+          >
+            <div className="flex flex-col items-center gap-3 text-center">
+              <svg
+                width="56"
+                height="56"
+                viewBox="0 0 24 24"
+                fill="currentColor"
+                className="text-phosphor-300"
+                aria-hidden
+              >
+                {GITHUB_MARK}
               </svg>
+              <h1 className="font-display text-3xl tracking-tight text-ink-100">
+                Connect to GitHub
+              </h1>
+              <p className="max-w-md font-sans text-sm text-ink-400">
+                Enter your GitHub Personal Access Token to access your repositories and generate
+                documentation automatically.
+              </p>
             </div>
-            <h1>Connect to GitHub</h1>
-            <p className="auth-description">
-              Enter your GitHub Personal Access Token to access your repositories and generate documentation automatically.
-            </p>
 
-            <div className="token-input-section">
-              <label htmlFor="github-token">GitHub Personal Access Token</label>
+            <div className="flex flex-col gap-2">
+              <label htmlFor="github-token" className="font-mono text-[12px] text-ink-300">
+                github personal access token
+              </label>
               <input
                 id="github-token"
                 type="password"
                 value={githubToken}
                 onChange={(e) => setGithubToken(e.target.value)}
                 placeholder="ghp_xxxxxxxxxxxxxxxxxxxx"
-                className="token-input"
+                className="w-full rounded-[2px] border border-ink-700 bg-ink-850 px-3.5 py-2.5 font-mono text-[13px] text-ink-100 transition-colors placeholder:text-ink-400 hover:border-ink-600 focus:border-phosphor-500 focus:outline-none"
                 disabled={isLoading}
                 onKeyDown={(e) => e.key === 'Enter' && handleConnect()}
               />
-              <button
-                className="github-connect-btn"
+              <Button
                 onClick={handleConnect}
                 disabled={isLoading || !githubToken.trim()}
+                loading={isLoading}
+                className="mt-1 w-full"
               >
-                {isLoading ? (
-                  <>
-                    <div className="spinner"></div>
-                    Connecting...
-                  </>
-                ) : (
-                  <>
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
-                      <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/>
-                    </svg>
-                    Connect to GitHub
-                  </>
-                )}
-              </button>
+                {isLoading ? 'connecting…' : 'connect to github'}
+              </Button>
             </div>
 
-            <div className="auth-help">
-              <h3>How to get a Personal Access Token:</h3>
-              <ol>
-                <li>Go to <a href="https://github.com/settings/tokens" target="_blank" rel="noopener noreferrer">GitHub Settings → Developer settings → Personal access tokens</a></li>
+            <div className="flex flex-col gap-2.5 border-t border-ink-700 pt-6">
+              <h3 className="font-display text-[12px] tracking-[0.14em] text-ink-300 uppercase">
+                How to get a token
+              </h3>
+              <ol className="flex list-decimal flex-col gap-1 pl-5 font-sans text-sm text-ink-300 marker:font-mono marker:text-ink-400">
+                <li>
+                  Go to{' '}
+                  <a
+                    href="https://github.com/settings/tokens"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-phosphor-300 transition-colors hover:text-phosphor-200"
+                  >
+                    GitHub Settings → Developer settings → Personal access tokens
+                  </a>
+                </li>
                 <li>Click "Generate new token (classic)"</li>
-                <li>Give it a name and select the <code>repo</code> scope</li>
+                <li>
+                  Give it a name and select the{' '}
+                  <code className="font-mono text-[12.5px] text-phosphor-300">repo</code> scope
+                </li>
                 <li>Click "Generate token" and copy the token</li>
                 <li>Paste it above and click "Connect to GitHub"</li>
               </ol>
             </div>
 
-            <div className="auth-features">
-              <h3>What you can do:</h3>
-              <ul>
-                <li>
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <polyline points="20 6 9 17 4 12"></polyline>
-                  </svg>
-                  Access all your repositories
-                </li>
-                <li>
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <polyline points="20 6 9 17 4 12"></polyline>
-                  </svg>
-                  Generate documentation automatically
-                </li>
-                <li>
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <polyline points="20 6 9 17 4 12"></polyline>
-                  </svg>
-                  Select specific repositories to document
-                </li>
-              </ul>
+            <div className="flex flex-col gap-2.5 border-t border-ink-700 pt-6">
+              <h3 className="font-display text-[12px] tracking-[0.14em] text-ink-300 uppercase">
+                What you can do
+              </h3>
+              <div className="flex flex-col gap-1.5">
+                {FEATURES.map((feature) => (
+                  <div
+                    key={feature}
+                    className="flex items-baseline gap-2.5 font-mono text-[13px] text-ink-300"
+                  >
+                    <span aria-hidden className="text-green">
+                      ✓
+                    </span>
+                    {feature}
+                  </div>
+                ))}
+              </div>
             </div>
-          </div>
+          </Panel>
         </div>
       </div>
     )
   }
 
   return (
-    <div className="github-page">
-      <div className="github-container">
-        <header className="github-header">
-          <div className="header-content">
-            <div>
-              <h1>Your GitHub Repositories</h1>
-              <p className="github-subtitle">
-                Select a repository to generate documentation
-              </p>
-            </div>
-            <div className="header-actions">
-              <div className="user-info-card">
-                {avatarUrl && <img src={avatarUrl} alt={username} className="user-avatar" />}
-                <div className="user-details">
-                  <div className="user-name">{username}</div>
-                  <div className="user-login">@{username}</div>
-                </div>
-              </div>
-              <button className="disconnect-btn" onClick={handleDisconnect}>
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4m7 14l5-5-5-5m5 5H9" />
-                </svg>
-                Disconnect
-              </button>
+    <div
+      ref={scopeRef}
+      className="github-page mx-auto flex w-full max-w-[1400px]! flex-1 min-h-0 flex-col gap-5 p-6"
+    >
+      <header
+        data-boot
+        style={{ opacity: 0 }}
+        className="flex flex-wrap items-end justify-between gap-4"
+      >
+        <div>
+          <h1 className="font-display text-3xl tracking-tight text-ink-100">
+            Your GitHub Repositories
+          </h1>
+          <p className="mt-1 font-sans text-sm text-ink-400">
+            Select a repository to generate documentation
+          </p>
+        </div>
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2.5 border border-ink-700 bg-ink-900 px-3 py-1.5">
+            {avatarUrl && (
+              <img
+                src={avatarUrl}
+                alt={username}
+                className="h-8 w-8 rounded-[2px] border border-ink-700"
+              />
+            )}
+            <div className="leading-tight">
+              <div className="font-mono text-[13px] text-ink-100">{username}</div>
+              <div className="font-mono text-[11px] text-ink-400">@{username}</div>
             </div>
           </div>
-        </header>
+          <Button variant="danger" onClick={handleDisconnect}>
+            disconnect
+          </Button>
+        </div>
+      </header>
 
+      <div data-boot style={{ opacity: 0 }} className="flex min-h-0 flex-1 flex-col">
         {isLoading ? (
-          <div className="loading-state">
-            <div className="spinner-large"></div>
-            <p>Loading your repositories...</p>
+          <div className="flex flex-1 items-center justify-center gap-3 font-mono text-[13px] text-ink-300">
+            <Spinner className="text-phosphor-400" />
+            loading your repositories…
           </div>
         ) : repositories.length === 0 ? (
-          <div className="empty-state">
-            <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-              <path d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-            </svg>
-            <p>No repositories found</p>
-            <span>Create a repository on GitHub to get started</span>
-          </div>
+          <EmptyState
+            title="no repositories found"
+            hint="Create a repository on GitHub to get started."
+          />
         ) : (
-          <div className="repositories-grid">
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
             {repositories.map((repo) => (
-              <div key={repo.id} className="repo-card">
-                <div className="repo-header">
-                  <div className="repo-title">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <path d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                    </svg>
-                    <a href={repo.html_url} target="_blank" rel="noopener noreferrer" className="repo-name">
-                      {repo.name}
-                    </a>
-                  </div>
-                  {repo.private && (
-                    <span className="private-badge">Private</span>
-                  )}
+              <Panel key={repo.id} contentClassName="gap-3 p-4">
+                <div className="flex items-center justify-between gap-3">
+                  <a
+                    href={repo.html_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="min-w-0 flex-1 truncate font-mono text-[13.5px] font-medium text-ink-100 transition-colors hover:text-phosphor-300"
+                  >
+                    {repo.name}
+                  </a>
+                  {repo.private && <Badge tone="amber">private</Badge>}
                 </div>
 
-                <p className="repo-description">
+                <p className="line-clamp-2 font-sans text-[13px] text-ink-300">
                   {repo.description || 'No description provided'}
                 </p>
 
-                <div className="repo-meta">
+                <div className="mt-auto flex flex-wrap items-center gap-x-3 gap-y-1 font-mono text-[11px] text-ink-400">
                   {repo.language && (
-                    <span className="repo-language">
-                      <span className="language-dot" style={{ backgroundColor: getLanguageColor(repo.language) }}></span>
+                    <span className="flex items-center gap-1.5">
+                      <span
+                        aria-hidden
+                        className="inline-block h-2 w-2 rounded-full"
+                        style={{ backgroundColor: getLanguageColor(repo.language) }}
+                      />
                       {repo.language}
                     </span>
                   )}
-                  <span className="repo-stars">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-                      <path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/>
-                    </svg>
-                    {repo.stargazers_count}
-                  </span>
-                  <span className="repo-updated">
-                    Updated {formatDate(repo.updated_at)}
-                  </span>
+                  <span>★ {repo.stargazers_count}</span>
+                  <span>updated {formatDate(repo.updated_at)}</span>
                 </div>
 
-                <button
-                  className="document-btn"
-                  onClick={() => handleDocumentRepo(repo.html_url)}
-                >
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-                    <polyline points="14 2 14 8 20 8"></polyline>
-                    <line x1="12" y1="18" x2="12" y2="12"></line>
-                    <line x1="9" y1="15" x2="15" y2="15"></line>
-                  </svg>
-                  Generate Documentation
-                </button>
-              </div>
+                <Button onClick={() => handleDocumentRepo(repo.html_url)} className="w-full">
+                  document
+                </Button>
+              </Panel>
             ))}
           </div>
         )}
       </div>
     </div>
   )
-}
-
-function getLanguageColor(language: string): string {
-  const colors: { [key: string]: string } = {
-    JavaScript: '#f1e05a',
-    TypeScript: '#2b7489',
-    Python: '#3572A5',
-    Java: '#b07219',
-    Go: '#00ADD8',
-    Rust: '#dea584',
-    Ruby: '#701516',
-    PHP: '#4F5D95',
-    'C++': '#f34b7d',
-    C: '#555555',
-    'C#': '#178600',
-    Swift: '#ffac45',
-    Kotlin: '#F18E33',
-    HTML: '#e34c26',
-    CSS: '#563d7c',
-  }
-  return colors[language] || '#94a3b8'
 }
 
 export default GitHub

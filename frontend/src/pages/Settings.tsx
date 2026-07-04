@@ -1,8 +1,12 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import axios from 'axios'
 import { showErrorToast, showSuccessToast, showLoadingToast, dismissToast } from '../utils/errorHandler'
 import config from '../config'
-import './Settings.css'
+import { useGSAP, bootSequence } from '../lib/motion'
+import Panel from '../components/ui/Panel'
+import Button from '../components/ui/Button'
+import Badge from '../components/ui/Badge'
+import SectionHeader from '../components/ui/SectionHeader'
 
 type ClaudeModel = 'claude-sonnet-4-20250514' | 'claude-haiku-4-5-20251001' | 'claude-3-5-haiku-20241022'
 
@@ -20,10 +24,67 @@ interface WebhookStatus {
   }>
 }
 
+interface ModelOption {
+  value: ClaudeModel
+  name: string
+  badges: Array<{ label: string; tone: 'neutral' | 'phosphor' | 'amber' }>
+  description: string
+  specs: string[]
+}
+
+const MODEL_OPTIONS: ModelOption[] = [
+  {
+    value: 'claude-haiku-4-5-20251001',
+    name: 'Claude Haiku 4.5',
+    badges: [
+      { label: 'new', tone: 'neutral' },
+      { label: 'recommended', tone: 'phosphor' },
+    ],
+    description: 'Sonnet-4-level coding performance at one-third the cost and twice the speed',
+    specs: ['2x faster than Sonnet', '1/3 the cost', 'Frontier performance'],
+  },
+  {
+    value: 'claude-sonnet-4-20250514',
+    name: 'Claude Sonnet 4.5',
+    badges: [{ label: 'advanced', tone: 'amber' }],
+    description: 'Maximum intelligence for the most complex codebases',
+    specs: ['Highest intelligence', 'Complex analysis', 'Higher cost'],
+  },
+  {
+    value: 'claude-3-5-haiku-20241022',
+    name: 'Claude 3.5 Haiku',
+    badges: [{ label: 'legacy', tone: 'neutral' }],
+    description: 'Previous generation model for basic documentation tasks',
+    specs: ['Fast response', 'Low cost', 'Good quality'],
+  },
+]
+
+const EVENT_DOT: Record<'received' | 'processed' | 'error', string> = {
+  received: 'text-amber',
+  processed: 'text-green',
+  error: 'text-red',
+}
+
+const EVENT_VERB: Record<'received' | 'processed' | 'error', string> = {
+  received: 'received',
+  processed: 'delivered',
+  error: 'failed',
+}
+
 function Settings() {
   const [claudeModel, setClaudeModel] = useState<ClaudeModel>('claude-haiku-4-5-20251001')
   const [webhookStatus, setWebhookStatus] = useState<WebhookStatus | null>(null)
+  const [isSaving, setIsSaving] = useState<boolean>(false)
   const webhookUrl = `${config.apiUrl}/api/webhook/github`
+  const scopeRef = useRef<HTMLDivElement>(null)
+
+  // page boot-in
+  useGSAP(
+    () => {
+      if (scopeRef.current) bootSequence(scopeRef.current)
+    },
+    { scope: scopeRef }
+  )
 
   // Load settings from the backend on mount
   useEffect(() => {
@@ -58,6 +119,7 @@ function Settings() {
   }, [])
 
   const handleSaveSettings = async () => {
+    setIsSaving(true)
     const loadingToastId = showLoadingToast('Saving settings...')
 
     try {
@@ -69,6 +131,8 @@ function Settings() {
     } catch (error) {
       dismissToast(loadingToastId)
       showErrorToast(error)
+    } finally {
+      setIsSaving(false)
     }
   }
 
@@ -82,189 +146,161 @@ function Settings() {
   }
 
   return (
-    <div className="settings-page">
-      <div className="settings-container">
-        <header className="settings-header">
-          <h1>Settings</h1>
-          <p className="settings-subtitle">Configure your AI provider and integration settings</p>
-        </header>
+    <div
+      ref={scopeRef}
+      className="settings-page mx-auto flex w-full max-w-[900px]! flex-1 min-h-0 flex-col gap-6 p-6"
+    >
+      <header data-boot style={{ opacity: 0 }}>
+        <h1 className="font-display text-3xl tracking-tight text-ink-100">Settings</h1>
+        <p className="mt-1 font-sans text-sm text-ink-400">
+          Configure your AI provider and integration settings
+        </p>
+      </header>
 
-        <div className="settings-sections">
-          {/* Claude Model Selection */}
-          <section className="settings-section">
-            <h2>Claude Model</h2>
-            <p className="section-description">Choose which Claude model to use for documentation generation</p>
+      {/* model selection */}
+      <section data-boot style={{ opacity: 0 }} className="flex flex-col gap-4">
+        <SectionHeader title="claude model" />
+        <p className="font-sans text-sm text-ink-400">
+          Choose which Claude model to use for documentation generation
+        </p>
 
-            <div className="model-options">
-              <label className={`model-option ${claudeModel === 'claude-haiku-4-5-20251001' ? 'active' : ''}`}>
+        <div className="flex flex-col gap-3">
+          {MODEL_OPTIONS.map((option) => {
+            const checked = claudeModel === option.value
+            return (
+              <label key={option.value} className="block cursor-pointer">
                 <input
                   type="radio"
                   name="claudeModel"
-                  value="claude-haiku-4-5-20251001"
-                  checked={claudeModel === 'claude-haiku-4-5-20251001'}
+                  value={option.value}
+                  checked={checked}
                   onChange={(e) => setClaudeModel(e.target.value as ClaudeModel)}
+                  className="sr-only"
                 />
-                <div className="model-content">
-                  <div className="model-header">
-                    <span className="model-name">Claude Haiku 4.5</span>
-                    <span className="badge badge-new">New</span>
-                    <span className="badge badge-recommended">Recommended</span>
-                  </div>
-                  <p className="model-description">Sonnet-4-level coding performance at one-third the cost and twice the speed</p>
-                  <div className="model-specs">
-                    <span className="spec">2x faster than Sonnet</span>
-                    <span className="spec">1/3 the cost</span>
-                    <span className="spec">Frontier performance</span>
-                  </div>
-                </div>
-              </label>
-
-              <label className={`model-option ${claudeModel === 'claude-sonnet-4-20250514' ? 'active' : ''}`}>
-                <input
-                  type="radio"
-                  name="claudeModel"
-                  value="claude-sonnet-4-20250514"
-                  checked={claudeModel === 'claude-sonnet-4-20250514'}
-                  onChange={(e) => setClaudeModel(e.target.value as ClaudeModel)}
-                />
-                <div className="model-content">
-                  <div className="model-header">
-                    <span className="model-name">Claude Sonnet 4.5</span>
-                    <span className="badge badge-advanced">Advanced</span>
-                  </div>
-                  <p className="model-description">Maximum intelligence for the most complex codebases</p>
-                  <div className="model-specs">
-                    <span className="spec">Highest intelligence</span>
-                    <span className="spec">Complex analysis</span>
-                    <span className="spec">Higher cost</span>
-                  </div>
-                </div>
-              </label>
-
-              <label className={`model-option ${claudeModel === 'claude-3-5-haiku-20241022' ? 'active' : ''}`}>
-                <input
-                  type="radio"
-                  name="claudeModel"
-                  value="claude-3-5-haiku-20241022"
-                  checked={claudeModel === 'claude-3-5-haiku-20241022'}
-                  onChange={(e) => setClaudeModel(e.target.value as ClaudeModel)}
-                />
-                <div className="model-content">
-                  <div className="model-header">
-                    <span className="model-name">Claude 3.5 Haiku</span>
-                    <span className="badge badge-legacy">Legacy</span>
-                  </div>
-                  <p className="model-description">Previous generation model for basic documentation tasks</p>
-                  <div className="model-specs">
-                    <span className="spec">Fast response</span>
-                    <span className="spec">Low cost</span>
-                    <span className="spec">Good quality</span>
-                  </div>
-                </div>
-              </label>
-            </div>
-          </section>
-
-          {/* Webhook Section */}
-          <section className="settings-section">
-            <h2>GitHub Webhook</h2>
-            <p className="section-description">Use this URL to set up GitHub webhooks for automatic documentation</p>
-
-            <div className="webhook-display">
-              <div className="webhook-url">
-                <code>{webhookUrl}</code>
-              </div>
-              <button className="copy-webhook-btn" onClick={handleCopyWebhookUrl}>
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
-                  <path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" />
-                </svg>
-                Copy
-              </button>
-            </div>
-
-            <div className="webhook-instructions">
-              <h3>Setup Instructions:</h3>
-              <ol>
-                <li>Go to your GitHub repository settings</li>
-                <li>Navigate to Webhooks → Add webhook</li>
-                <li>Paste the URL above in "Payload URL"</li>
-                <li>Select "application/json" as content type</li>
-                <li>Choose "Pull requests" events</li>
-                <li>Save the webhook</li>
-              </ol>
-            </div>
-
-            {webhookStatus && (
-              <div className="webhook-status">
-                <h3>Webhook Status</h3>
-                <div className="status-grid">
-                  <div className="status-item">
-                    <span className="status-label">Last Trigger:</span>
-                    <span className="status-value">
-                      {webhookStatus.lastTrigger
-                        ? new Date(webhookStatus.lastTrigger).toLocaleString()
-                        : 'Never'}
+                <Panel active={checked}>
+                  <div className="flex gap-3 p-4">
+                    <span
+                      aria-hidden
+                      className={`shrink-0 font-mono text-[13px] leading-6 ${
+                        checked ? 'text-phosphor-400' : 'text-ink-400'
+                      }`}
+                    >
+                      {checked ? '[■]' : '[ ]'}
                     </span>
-                  </div>
-                  <div className="status-item">
-                    <span className="status-label">Total Received:</span>
-                    <span className="status-value">{webhookStatus.totalReceived}</span>
-                  </div>
-                  <div className="status-item">
-                    <span className="status-label">Total Processed:</span>
-                    <span className="status-value">{webhookStatus.totalProcessed}</span>
-                  </div>
-                  {webhookStatus.lastError && (
-                    <div className="status-item error">
-                      <span className="status-label">Last Error:</span>
-                      <span className="status-value">{webhookStatus.lastError}</span>
+                    <div className="flex min-w-0 flex-col gap-1.5">
+                      <div className="flex flex-wrap items-center gap-2.5">
+                        <span className="font-mono text-[14px] font-semibold text-ink-100">
+                          {option.name}
+                        </span>
+                        {option.badges.map((badge) => (
+                          <Badge key={badge.label} tone={badge.tone}>
+                            {badge.label}
+                          </Badge>
+                        ))}
+                      </div>
+                      <p className="font-sans text-[13px] text-ink-300">{option.description}</p>
+                      <span className="font-mono text-[11px] text-ink-400">
+                        {option.specs.join(' · ')}
+                      </span>
                     </div>
-                  )}
-                </div>
+                  </div>
+                </Panel>
+              </label>
+            )
+          })}
+        </div>
+      </section>
 
-                {webhookStatus.recentEvents.length > 0 && (
-                  <div className="recent-events">
-                    <h4>Recent Events</h4>
-                    <div className="events-list">
-                      {webhookStatus.recentEvents.map((event, index) => (
-                        <div key={index} className={`event-item ${event.status}`}>
-                          <span className="event-time">
-                            {new Date(event.timestamp).toLocaleTimeString()}
-                          </span>
-                          <span className="event-type">{event.event}</span>
-                          {event.prNumber && (
-                            <span className="event-pr">PR #{event.prNumber}</span>
-                          )}
-                          {event.repository && (
-                            <span className="event-repo">{event.repository}</span>
-                          )}
-                          <span className={`event-status ${event.status}`}>
-                            {event.status === 'received' && '...'}
-                            {event.status === 'processed' && 'ok'}
-                            {event.status === 'error' && 'err'}
-                          </span>
-                        </div>
-                      ))}
-                    </div>
+      {/* webhook */}
+      <section data-boot style={{ opacity: 0 }} className="flex flex-col gap-4 pt-2">
+        <Panel title="GITHUB WEBHOOK" contentClassName="gap-5 p-6">
+          <p className="font-sans text-sm text-ink-400">
+            Use this URL to set up GitHub webhooks for automatic documentation
+          </p>
+
+          <div className="flex items-center gap-2.5 border border-ink-700 bg-ink-950/60 py-2 pr-2 pl-3.5">
+            <span aria-hidden className="font-mono text-[13px] text-phosphor-400">
+              $
+            </span>
+            <code className="min-w-0 flex-1 truncate font-mono text-[12.5px] text-ink-100">
+              {webhookUrl}
+            </code>
+            <Button size="sm" variant="ghost" onClick={handleCopyWebhookUrl}>
+              copy
+            </Button>
+          </div>
+
+          <div className="flex flex-col gap-2">
+            <h3 className="font-display text-[12px] tracking-[0.14em] text-ink-300 uppercase">
+              Setup instructions
+            </h3>
+            <ol className="flex list-decimal flex-col gap-1 pl-5 font-mono text-[12.5px] text-ink-300 marker:text-ink-400">
+              <li>Go to your GitHub repository settings</li>
+              <li>Navigate to Webhooks → Add webhook</li>
+              <li>Paste the URL above in "Payload URL"</li>
+              <li>Select "application/json" as content type</li>
+              <li>Choose "Pull requests" events</li>
+              <li>Save the webhook</li>
+            </ol>
+          </div>
+
+          {webhookStatus && (
+            <div className="flex flex-col gap-2.5 border-t border-ink-700 pt-4">
+              <h3 className="font-display text-[12px] tracking-[0.14em] text-ink-300 uppercase">
+                Webhook status
+              </h3>
+              <div className="flex flex-col gap-1 font-mono text-[12px] text-ink-300">
+                <div>
+                  <span className="text-ink-400">last trigger: </span>
+                  {webhookStatus.lastTrigger
+                    ? new Date(webhookStatus.lastTrigger).toLocaleString()
+                    : 'never'}
+                </div>
+                <div>
+                  <span className="text-ink-400">total received: </span>
+                  {webhookStatus.totalReceived}
+                  <span className="text-ink-400"> · total processed: </span>
+                  {webhookStatus.totalProcessed}
+                </div>
+                {webhookStatus.lastError && (
+                  <div className="text-red">
+                    <span className="text-red/60">last error: </span>
+                    {webhookStatus.lastError}
                   </div>
                 )}
               </div>
-            )}
-          </section>
 
-          {/* Action Buttons */}
-          <div className="settings-actions">
-            <button className="btn btn-primary" onClick={handleSaveSettings}>
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2z" />
-                <polyline points="17 21 17 13 7 13 7 21" />
-                <polyline points="7 3 7 8 15 8" />
-              </svg>
-              Save Settings
-            </button>
-          </div>
-        </div>
+              {webhookStatus.recentEvents.length > 0 && (
+                <div className="flex flex-col gap-1 border border-ink-700 bg-ink-950/60 p-3">
+                  {webhookStatus.recentEvents.map((event, index) => (
+                    <div
+                      key={index}
+                      className="flex flex-wrap items-baseline gap-x-2.5 gap-y-0.5 font-mono text-[12px] text-ink-300"
+                    >
+                      <span aria-hidden className={EVENT_DOT[event.status]}>
+                        ●
+                      </span>
+                      <span className="font-mono text-[11px] text-ink-400">
+                        {new Date(event.timestamp).toLocaleTimeString()}
+                      </span>
+                      <span>{EVENT_VERB[event.status]}</span>
+                      <span className="text-ink-400">{event.event}</span>
+                      {event.prNumber && <span>PR #{event.prNumber}</span>}
+                      {event.repository && <span className="text-ink-400">{event.repository}</span>}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </Panel>
+      </section>
+
+      {/* actions */}
+      <div data-boot style={{ opacity: 0 }} className="flex pb-2">
+        <Button onClick={handleSaveSettings} loading={isSaving}>
+          save settings
+        </Button>
       </div>
     </div>
   )

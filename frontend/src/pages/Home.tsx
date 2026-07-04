@@ -1,10 +1,18 @@
 import { useState, useEffect, useRef } from 'react'
 import axios from 'axios'
 import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { paperTheme } from '../lib/syntaxTheme'
 import { renderMermaid } from '../lib/mermaid'
+import { gsap, useGSAP, bootSequence, prefersReducedMotion } from '../lib/motion'
 import QualityScore from '../components/QualityScore'
+import Panel from '../components/ui/Panel'
+import Button from '../components/ui/Button'
+import Menu, { MenuItem } from '../components/ui/Menu'
+import Badge from '../components/ui/Badge'
+import EmptyState from '../components/ui/EmptyState'
+import ProgressBar from '../components/ui/ProgressBar'
 import { demoSamples } from '../data/demoSamples'
 import { downloadAsMarkdown, downloadAsHTML, copyAsMarkdown, copyAsHTML } from '../utils/exportUtils'
 import { showErrorToast, showSuccessToast } from '../utils/errorHandler'
@@ -23,6 +31,8 @@ interface QualityScoreData {
   }
 }
 
+const LANGUAGES = ['javascript', 'typescript', 'python', 'java', 'graphql'] as const
+
 function Home() {
   const [code, setCode] = useState<string>('')
   const [language, setLanguage] = useState<string>('javascript')
@@ -36,9 +46,34 @@ function Home() {
   const [showExportMenu, setShowExportMenu] = useState<boolean>(false)
   const [progress, setProgress] = useState<number>(0)
   const [progressStatus, setProgressStatus] = useState<string>('')
+  const [bootLog, setBootLog] = useState<string[]>([])
   const [pendingDemo, setPendingDemo] = useState<typeof demoSamples[0] | null>(null)
   const diagramRef = useRef<HTMLDivElement>(null)
   const progressIntervalRef = useRef<number | null>(null)
+  const scopeRef = useRef<HTMLDivElement>(null)
+
+  // page boot-in
+  useGSAP(
+    () => {
+      if (scopeRef.current) bootSequence(scopeRef.current)
+    },
+    { scope: scopeRef }
+  )
+
+  // the printout: docs slide out of the machine when they land
+  useGSAP(
+    () => {
+      if (!documentation || !scopeRef.current) return
+      const sheet = scopeRef.current.querySelector('[data-sheet]')
+      if (!sheet || prefersReducedMotion()) return
+      gsap.fromTo(
+        sheet,
+        { clipPath: 'inset(0 0 100% 0)', y: -12 },
+        { clipPath: 'inset(0 0 0% 0)', y: 0, duration: 0.8, ease: 'power2.inOut' }
+      )
+    },
+    { dependencies: [documentation], scope: scopeRef }
+  )
 
   // Render diagram when it changes
   useEffect(() => {
@@ -46,6 +81,14 @@ function Home() {
       renderMermaid(diagramRef.current, diagram)
     }
   }, [diagram])
+
+  // accumulate the generation status feed into the boot log
+  useEffect(() => {
+    if (!isLoading || !progressStatus) return
+    setBootLog((log) =>
+      log[log.length - 1] === progressStatus ? log : [...log, progressStatus]
+    )
+  }, [progressStatus, isLoading])
 
   const startProgressPolling = (jobId: string) => {
     progressIntervalRef.current = window.setInterval(async () => {
@@ -120,7 +163,8 @@ function Home() {
     setDiagram('')
     setQualityScore(null)
     setProgress(0)
-    setProgressStatus('Starting...')
+    setProgressStatus('')
+    setBootLog(['job accepted'])
 
     try {
       // Start the job
@@ -168,6 +212,7 @@ function Home() {
     setDiagram('')
     setQualityScore(null)
     setError('')
+    setBootLog([])
     showSuccessToast('Cleared successfully')
   }
 
@@ -223,248 +268,203 @@ function Home() {
   }
 
   return (
-    <div className="home-page mx-auto flex w-full max-w-[1600px] flex-1 min-h-0 flex-col gap-6 p-6">
-      <div className="controls">
-        <div className="demo-button-wrapper">
-          <button
-            className="demo-btn"
-            onClick={() => setShowDemoMenu(!showDemoMenu)}
-          >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z" />
-            </svg>
-            Try Demo
-          </button>
-          {showDemoMenu && (
-            <div className="demo-menu">
-              {demoSamples.map((sample, index) => (
-                <button
-                  key={index}
-                  className="demo-menu-item"
-                  onClick={() => handleLoadDemo(index)}
-                >
-                  <div className="demo-item-header">
-                    <span className="demo-item-name">{sample.name}</span>
-                    <span className="demo-item-lang">{sample.language}</span>
-                  </div>
-                  <div className="demo-item-desc">{sample.description}</div>
-                </button>
-              ))}
-            </div>
-          )}
+    <div
+      ref={scopeRef}
+      className="home-page mx-auto flex w-full max-w-[1600px] flex-1 min-h-0 flex-col gap-5 p-6"
+    >
+      {/* command bar */}
+      <div data-boot className="relative z-30 flex flex-wrap items-center gap-3" style={{ opacity: 0 }}>
+        <div className="relative">
+          <Button variant="ghost" onClick={() => setShowDemoMenu(!showDemoMenu)}>
+            <span className="text-phosphor-400">$</span> try demo
+          </Button>
+          <Menu open={showDemoMenu} onClose={() => setShowDemoMenu(false)} className="min-w-80">
+            {demoSamples.map((sample, index) => (
+              <MenuItem key={index} onSelect={() => handleLoadDemo(index)}>
+                <span className="flex items-center justify-between gap-3">
+                  <span className="font-medium text-ink-100">{sample.name}</span>
+                  <Badge tone="phosphor">{sample.language}</Badge>
+                </span>
+                <span className="mt-1 block font-sans text-[12px] text-ink-400">
+                  {sample.description}
+                </span>
+              </MenuItem>
+            ))}
+          </Menu>
         </div>
 
-        <select
-          value={language}
-          onChange={(e) => setLanguage(e.target.value)}
-          className="language-select"
-        >
-          <option value="javascript">JavaScript</option>
-          <option value="python">Python</option>
-          <option value="java">Java</option>
-          <option value="typescript">TypeScript</option>
-          <option value="graphql">GraphQL</option>
-        </select>
+        <div className="relative">
+          <select
+            value={language}
+            onChange={(e) => setLanguage(e.target.value)}
+            className="cursor-pointer appearance-none rounded-[2px] border border-ink-700 bg-ink-850 py-2 pr-9 pl-4 font-mono text-[13.5px] text-ink-100 transition-colors hover:border-ink-600 focus:border-phosphor-500 focus:outline-none"
+          >
+            {LANGUAGES.map((lang) => (
+              <option key={lang} value={lang}>
+                {lang}
+              </option>
+            ))}
+          </select>
+          <span
+            aria-hidden
+            className="pointer-events-none absolute top-1/2 right-3 -translate-y-1/2 font-mono text-[10px] text-ink-400"
+          >
+            ▾
+          </span>
+        </div>
 
-        <button
-          className="generate-btn"
+        <Button
           onClick={handleGenerateDocumentation}
           disabled={isLoading || !code.trim()}
+          loading={isLoading}
         >
-          {isLoading ? (
-            <div style={{ display: 'flex', flexDirection: 'column', width: '100%', gap: '0.5rem' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', justifyContent: 'center' }}>
-                <span className="spinner"></span>
-                <span>{progressStatus || 'Generating...'}</span>
-              </div>
-              {progress > 0 && (
-                <div className="progress-bar-container">
-                  <div
-                    className="progress-bar-fill"
-                    style={{ width: `${progress}%` }}
-                  >
-                    <span className="progress-percentage">{progress}%</span>
-                  </div>
-                </div>
-              )}
-            </div>
-          ) : (
-            'Generate Documentation'
-          )}
-        </button>
+          {isLoading ? progressStatus || 'generating…' : 'generate documentation'}
+        </Button>
 
-        <button
-          className="clear-btn"
-          onClick={handleClear}
-          disabled={!code && !documentation}
-        >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M6 18L18 6M6 6l12 12" />
-          </svg>
-          Clear
-        </button>
+        <Button variant="ghost" onClick={handleClear} disabled={!code && !documentation}>
+          clear
+        </Button>
+
+        {isLoading && progress > 0 && (
+          <ProgressBar value={progress} className="min-w-40 flex-1" />
+        )}
       </div>
 
       {error && (
-        <div className="error-message">
+        <div className="border border-red/25 bg-red/10 px-4 py-3 font-mono text-[13px] text-red">
           {error}
         </div>
       )}
 
-      <div className="split-view">
-        <div className="panel code-panel">
-          <div className="panel-header">
-            <h3>Code Input</h3>
-            <span className="char-count">{code.length} characters</span>
-          </div>
-          <div className="panel-content">
-            <textarea
-              className="code-input"
-              value={code}
-              onChange={(e) => setCode(e.target.value)}
-              placeholder={`Paste your ${language} code here...`}
-              spellCheck={false}
-            />
-          </div>
-        </div>
+      {/* split view */}
+      <div data-boot className="grid min-h-0 flex-1 gap-5 lg:grid-cols-2" style={{ opacity: 0 }}>
+        <Panel
+          title="CODE INPUT"
+          actions={
+            <span className="font-mono text-[11px] text-ink-400">{code.length} chars</span>
+          }
+        >
+          <textarea
+            className="min-h-[420px] w-full flex-1 resize-none bg-ink-950/60 p-5 font-mono text-[13.5px] leading-relaxed text-ink-100 placeholder:text-ink-400 focus:outline-none"
+            value={code}
+            onChange={(e) => setCode(e.target.value)}
+            placeholder={`Paste your ${language} code here…`}
+            spellCheck={false}
+          />
+        </Panel>
 
-        <div className="panel docs-panel">
-          <div className="panel-header">
-            <h3>Generated Documentation</h3>
-            {documentation && (
-              <div className="panel-header-actions">
-                <button className="copy-btn" onClick={handleCopyDocumentation}>
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
-                    <path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" />
-                  </svg>
-                  Copy
-                </button>
-
-                <div className="export-button-wrapper">
-                  <button className="export-btn" onClick={() => setShowExportMenu(!showExportMenu)}>
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-                      <polyline points="7 10 12 15 17 10"></polyline>
-                      <line x1="12" y1="15" x2="12" y2="3"></line>
-                    </svg>
-                    Export
-                  </button>
-                  {showExportMenu && (
-                    <div className="export-menu">
-                      <button
-                        className="export-menu-item"
-                        onClick={() => handleExport('markdown', 'download')}
-                      >
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-                          <polyline points="7 10 12 15 17 10"></polyline>
-                          <line x1="12" y1="15" x2="12" y2="3"></line>
-                        </svg>
-                        Download as Markdown
-                      </button>
-                      <button
-                        className="export-menu-item"
-                        onClick={() => handleExport('html', 'download')}
-                      >
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-                          <polyline points="7 10 12 15 17 10"></polyline>
-                          <line x1="12" y1="15" x2="12" y2="3"></line>
-                        </svg>
-                        Download as HTML
-                      </button>
-                      <div className="export-menu-divider"></div>
-                      <button
-                        className="export-menu-item"
-                        onClick={() => handleExport('markdown', 'copy')}
-                      >
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                          <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
-                          <path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" />
-                        </svg>
-                        Copy as Markdown
-                      </button>
-                      <button
-                        className="export-menu-item"
-                        onClick={() => handleExport('html', 'copy')}
-                      >
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                          <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
-                          <path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" />
-                        </svg>
-                        Copy as HTML
-                      </button>
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
-          </div>
-          <div className="panel-content">
+        <Panel
+          title="OUTPUT"
+          active={isLoading || !!documentation}
+          actions={
+            documentation ? (
+              <span className="flex items-center gap-1.5">
+                <Button size="sm" variant="ghost" onClick={handleCopyDocumentation}>
+                  copy
+                </Button>
+                <span className="relative">
+                  <Button size="sm" variant="ghost" onClick={() => setShowExportMenu(!showExportMenu)}>
+                    export ▾
+                  </Button>
+                  <Menu open={showExportMenu} onClose={() => setShowExportMenu(false)} align="right">
+                    <MenuItem onSelect={() => handleExport('markdown', 'download')}>
+                      ↓ download .md
+                    </MenuItem>
+                    <MenuItem onSelect={() => handleExport('html', 'download')}>
+                      ↓ download .html
+                    </MenuItem>
+                    <div className="my-1 h-px bg-ink-700" />
+                    <MenuItem onSelect={() => handleExport('markdown', 'copy')}>
+                      ⧉ copy as markdown
+                    </MenuItem>
+                    <MenuItem onSelect={() => handleExport('html', 'copy')}>
+                      ⧉ copy as html
+                    </MenuItem>
+                  </Menu>
+                </span>
+              </span>
+            ) : undefined
+          }
+        >
+          <div className="min-h-0 flex-1 overflow-y-auto">
             {documentation ? (
-              <div className="markdown-content slide-in-right">
-                <ReactMarkdown
-                  components={{
-                    code({ node, inline, className, children, ...props }: any) {
-                      const match = /language-(\w+)/.exec(className || '')
-                      return !inline && match ? (
-                        <SyntaxHighlighter
-                          style={paperTheme}
-                          language={match[1]}
-                          PreTag="div"
-                          {...props}
-                        >
-                          {String(children).replace(/\n$/, '')}
-                        </SyntaxHighlighter>
-                      ) : (
-                        <code className={className} {...props}>
-                          {children}
-                        </code>
-                      )
-                    }
-                  }}
+              <div className="flex min-h-full flex-col gap-4 p-4">
+                {/* the printout */}
+                <div
+                  data-sheet
+                  className="border border-paper-300 shadow-[0_14px_40px_rgba(0,0,0,0.5)]"
                 >
-                  {documentation}
-                </ReactMarkdown>
+                  <div className="markdown-content">
+                    <ReactMarkdown
+                      remarkPlugins={[remarkGfm]}
+                      components={{
+                        code({ node, inline, className, children, ...props }: any) {
+                          const match = /language-(\w+)/.exec(className || '')
+                          return !inline && match ? (
+                            <SyntaxHighlighter
+                              style={paperTheme}
+                              language={match[1]}
+                              PreTag="div"
+                              {...props}
+                            >
+                              {String(children).replace(/\n$/, '')}
+                            </SyntaxHighlighter>
+                          ) : (
+                            <code className={className} {...props}>
+                              {children}
+                            </code>
+                          )
+                        }
+                      }}
+                    >
+                      {documentation}
+                    </ReactMarkdown>
 
-                {qualityScore && <QualityScore qualityScore={qualityScore} />}
-
-                {diagram && (
-                  <div className="diagram-section fade-in-up">
-                    <div className="diagram-header" onClick={() => setIsDiagramCollapsed(!isDiagramCollapsed)}>
-                      <h3>Visual Diagram</h3>
-                      <button className="collapse-btn">
-                        <svg
-                          width="20"
-                          height="20"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="2"
-                          style={{ transform: isDiagramCollapsed ? 'rotate(-90deg)' : 'rotate(0deg)', transition: 'transform 0.2s' }}
+                    {diagram && (
+                      <div className="border-t border-paper-300 px-2 pt-4 pb-2">
+                        <button
+                          className="flex w-full cursor-pointer items-center justify-between font-mono text-[11px] tracking-[0.14em] text-print-400 uppercase"
+                          onClick={() => setIsDiagramCollapsed(!isDiagramCollapsed)}
                         >
-                          <polyline points="6 9 12 15 18 9" />
-                        </svg>
-                      </button>
-                    </div>
-                    {!isDiagramCollapsed && (
-                      <div className="diagram-container" ref={diagramRef}></div>
+                          <span>figure 1 — flow diagram</span>
+                          <span aria-hidden>{isDiagramCollapsed ? '▸' : '▾'}</span>
+                        </button>
+                        {!isDiagramCollapsed && (
+                          <div ref={diagramRef} className="mt-3 flex justify-center overflow-x-auto" />
+                        )}
+                      </div>
                     )}
                   </div>
-                )}
+                </div>
+
+                {qualityScore && <QualityScore qualityScore={qualityScore} />}
+              </div>
+            ) : isLoading ? (
+              <div className="p-5 font-mono text-[13px] leading-loose">
+                {bootLog.map((line, i) => (
+                  <div key={i} className="text-ink-300">
+                    <span className="text-phosphor-400">&gt;</span> {line}
+                  </div>
+                ))}
+                <span aria-hidden className="animate-caret-blink text-phosphor-400">
+                  ▮
+                </span>
               </div>
             ) : (
-              <div className="empty-state">
-                <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-                  <path d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                </svg>
-                <p>Documentation will appear here</p>
-                <span>Enter your code and click "Generate Documentation"</span>
-              </div>
+              <EmptyState
+                glyph="¶"
+                title="output feeds here"
+                hint={
+                  <>
+                    Paste code on the left and run{' '}
+                    <span className="font-mono text-ink-300">generate</span> — the documentation
+                    prints as a typeset page.
+                  </>
+                }
+              />
             )}
           </div>
-        </div>
+        </Panel>
       </div>
     </div>
   )

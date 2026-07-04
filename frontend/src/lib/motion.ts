@@ -111,7 +111,9 @@ export function bootSequence(scope: Element): gsap.core.Timeline {
   tl.fromTo(
     items,
     { opacity: 0, y: 8 },
-    { opacity: 1, y: 0, duration: 0.35, ease: 'power2.out', stagger: 0.05 }
+    // clearProps: leftover inline transforms create stacking contexts that
+    // trap popovers (Menu) beneath later siblings
+    { opacity: 1, y: 0, duration: 0.35, ease: 'power2.out', stagger: 0.05, clearProps: 'transform' }
   )
   return tl
 }

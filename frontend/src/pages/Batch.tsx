@@ -6,10 +6,17 @@ import remarkGfm from 'remark-gfm'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { paperTheme } from '../lib/syntaxTheme'
 import { renderMermaid } from '../lib/mermaid'
+import { useGSAP, bootSequence } from '../lib/motion'
 import { useBatch } from '../contexts/BatchContext'
+import QualityScore from '../components/QualityScore'
+import Panel from '../components/ui/Panel'
+import Button from '../components/ui/Button'
+import Badge from '../components/ui/Badge'
+import EmptyState from '../components/ui/EmptyState'
+import ProgressBar from '../components/ui/ProgressBar'
+import SectionHeader from '../components/ui/SectionHeader'
 import { showErrorToast, showSuccessToast, showLoadingToast, dismissToast } from '../utils/errorHandler'
 import { downloadAsHTML, downloadAsPDF } from '../utils/exportUtils'
-import './Batch.css'
 
 
 interface BatchProgress {
@@ -41,6 +48,43 @@ interface BatchResult {
   fullRepoDocumentation?: string
 }
 
+const MODES = [
+  { id: 'url', label: 'GITHUB URL' },
+  { id: 'zip', label: 'UPLOAD ZIP' },
+] as const
+
+const HOW_IT_WORKS = [
+  'Choose input method: GitHub URL or Upload ZIP file',
+  'Set the maximum number of files to process',
+  'Click "Start Batch Processing"',
+  'Watch the progress as files are documented',
+  'Review all documentation and download',
+]
+
+const FEATURES = [
+  { title: 'ZIP UPLOAD', body: 'Upload a zipped repository directly for processing' },
+  { title: 'AUTO-DETECTION', body: 'Automatically detects code files in supported languages' },
+  { title: 'PROGRESS TRACKING', body: 'Real-time progress updates and file-by-file status' },
+  { title: 'TABLE OF CONTENTS', body: 'Organized documentation with navigation' },
+  { title: 'DOWNLOAD ALL', body: 'Export complete documentation as Markdown' },
+]
+
+// Shared ReactMarkdown code renderer — syntax highlighting on the paper sheet.
+const markdownComponents = {
+  code({ node, inline, className, children, ...props }: any) {
+    const match = /language-(\w+)/.exec(className || '')
+    return !inline && match ? (
+      <SyntaxHighlighter style={paperTheme} language={match[1]} PreTag="div" {...props}>
+        {String(children).replace(/\n$/, '')}
+      </SyntaxHighlighter>
+    ) : (
+      <code className={className} {...props}>
+        {children}
+      </code>
+    )
+  },
+}
+
 function Batch() {
   const location = useLocation()
   const batchContext = useBatch()
@@ -54,10 +98,21 @@ function Batch() {
   const [localBatchId, setLocalBatchId] = useState<string>('')
   const [localIsProcessing, setLocalIsProcessing] = useState<boolean>(false)
   const [incrementalDocs, setIncrementalDocs] = useState<DocumentedFile[]>([])
+  const [isDiagramCollapsed, setIsDiagramCollapsed] = useState<boolean>(false)
   const progressInterval = useRef<ReturnType<typeof setInterval> | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const diagramRef = useRef<HTMLDivElement>(null)
   const docsFetchedRef = useRef<number>(0)
+  const logRef = useRef<HTMLDivElement>(null)
+  const scopeRef = useRef<HTMLDivElement>(null)
+
+  // page boot-in
+  useGSAP(
+    () => {
+      if (scopeRef.current) bootSequence(scopeRef.current)
+    },
+    { scope: scopeRef }
+  )
 
   // Use batch context for URL mode, local state for zip mode
   const isProcessing = uploadMode === 'zip' ? localIsProcessing : batchContext.isProcessing
@@ -156,6 +211,13 @@ function Batch() {
       renderMermaid(diagramRef.current, diagram)
     }
   }, [selectedDoc])
+
+  // Keep the live file log pinned to the newest entry
+  useEffect(() => {
+    if (logRef.current) {
+      logRef.current.scrollTop = logRef.current.scrollHeight
+    }
+  }, [incrementalDocs])
 
   useEffect(() => {
     return () => {
@@ -369,500 +431,419 @@ function Batch() {
   }
 
   return (
-    <div className="batch-page">
-      <div className="batch-container">
-        <header className="batch-header">
-          <h1>Batch Documentation</h1>
-          <p className="batch-subtitle">Document entire repositories automatically</p>
-        </header>
+    <div
+      ref={scopeRef}
+      className="batch-page mx-auto flex w-full max-w-[1400px]! flex-1 min-h-0 flex-col gap-5 p-6"
+    >
+      {/* header */}
+      <header data-boot style={{ opacity: 0 }}>
+        <h1 className="font-display text-3xl text-ink-100">Batch Documentation</h1>
+        <p className="mt-1 font-sans text-sm text-ink-400">
+          Document entire repositories automatically
+        </p>
+      </header>
 
-        <div className="batch-input-section">
-          <div className="mode-selector">
-            <button
-              className={`mode-btn ${uploadMode === 'url' ? 'active' : ''}`}
-              onClick={() => setUploadMode('url')}
-              disabled={isProcessing}
-            >
-              GitHub URL
-            </button>
-            <button
-              className={`mode-btn ${uploadMode === 'zip' ? 'active' : ''}`}
-              onClick={() => setUploadMode('zip')}
-              disabled={isProcessing}
-            >
-              Upload ZIP
-            </button>
-          </div>
-
-          {uploadMode === 'url' ? (
-            <div className="input-group">
-              <label htmlFor="repoUrl">GitHub Repository URL</label>
-              <input
-                id="repoUrl"
-                type="text"
-                value={repoUrl}
-                onChange={(e) => setRepoUrl(e.target.value)}
-                placeholder="https://github.com/username/repository"
-                className="repo-input"
-                disabled={isProcessing}
-              />
-            </div>
-          ) : (
-            <div className="input-group">
-              <label htmlFor="zipFile">Upload Zipped Repository</label>
-              <input
-                ref={fileInputRef}
-                id="zipFile"
-                type="file"
-                accept=".zip"
-                onChange={handleFileSelect}
-                className="file-input"
-                disabled={isProcessing}
-                style={{ display: 'none' }}
-              />
-              <div className="file-upload-area">
+      {/* input */}
+      <div data-boot style={{ opacity: 0 }}>
+        <Panel title="INPUT">
+          <div className="flex flex-col gap-5 p-5">
+            {/* mode bracket tabs */}
+            <div className="flex gap-2 border-b border-ink-700">
+              {MODES.map((mode) => (
                 <button
-                  className="file-select-btn"
-                  onClick={() => fileInputRef.current?.click()}
+                  key={mode.id}
+                  onClick={() => setUploadMode(mode.id)}
                   disabled={isProcessing}
+                  className={`-mb-px cursor-pointer border-b-2 px-3 py-2 font-display text-[12px] tracking-[0.12em] transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
+                    uploadMode === mode.id
+                      ? 'border-phosphor-400 text-phosphor-300'
+                      : 'border-transparent text-ink-400 hover:text-ink-300'
+                  }`}
                 >
-                  {selectedFile ? '+ Change File' : 'Select ZIP File'}
+                  [ {mode.label} ]
                 </button>
-                {selectedFile && (
-                  <div className="selected-file-info">
-                    <span className="file-name">{selectedFile.name}</span>
-                    <span className="file-size">
-                      ({(selectedFile.size / 1024 / 1024).toFixed(2)} MB)
-                    </span>
-                  </div>
-                )}
-                {!selectedFile && (
-                  <p className="file-hint">Select a zipped GitHub repository to process</p>
-                )}
+              ))}
+            </div>
+
+            {uploadMode === 'url' ? (
+              <div className="flex flex-col gap-2">
+                <label
+                  htmlFor="repoUrl"
+                  className="font-mono text-[11px] tracking-[0.14em] text-ink-400 uppercase"
+                >
+                  github repository url
+                </label>
+                <div className="flex items-center gap-2.5 rounded-[2px] border border-ink-700 bg-ink-950/60 px-3.5 transition-colors focus-within:border-phosphor-500">
+                  <span aria-hidden className="font-mono text-[13.5px] text-phosphor-400 select-none">
+                    $
+                  </span>
+                  <input
+                    id="repoUrl"
+                    type="text"
+                    value={repoUrl}
+                    onChange={(e) => setRepoUrl(e.target.value)}
+                    placeholder="https://github.com/username/repository"
+                    disabled={isProcessing}
+                    spellCheck={false}
+                    className="w-full flex-1 bg-transparent py-2.5 font-mono text-[13.5px] text-ink-100 placeholder:text-ink-400 focus:outline-none disabled:opacity-40"
+                  />
+                </div>
               </div>
-            </div>
-          )}
-
-          <div className="input-group">
-            <label htmlFor="maxFiles">Maximum Files</label>
-            <input
-              id="maxFiles"
-              type="number"
-              value={maxFiles}
-              onChange={(e) => setMaxFiles(parseInt(e.target.value) || 50)}
-              min="1"
-              max="100"
-              className="number-input"
-              disabled={isProcessing}
-            />
-            <small>Limit the number of files to process (1-100)</small>
-          </div>
-
-          <div className="button-group">
-            <button
-              className="start-btn"
-              onClick={handleStartBatch}
-              disabled={isProcessing}
-            >
-              {isProcessing ? 'Processing...' : 'Start Batch Processing'}
-            </button>
-
-            {isProcessing && (
-              <button
-                className="cancel-btn"
-                onClick={handleCancelBatch}
-              >
-                Cancel
-              </button>
+            ) : (
+              <div className="flex flex-col gap-2">
+                <label
+                  htmlFor="zipFile"
+                  className="font-mono text-[11px] tracking-[0.14em] text-ink-400 uppercase"
+                >
+                  upload zipped repository
+                </label>
+                <input
+                  ref={fileInputRef}
+                  id="zipFile"
+                  type="file"
+                  accept=".zip"
+                  onChange={handleFileSelect}
+                  disabled={isProcessing}
+                  className="hidden"
+                />
+                <div className="flex flex-col items-center gap-3 border border-dashed border-ink-600 bg-ink-950/40 px-6 py-8 text-center transition-colors hover:border-phosphor-500">
+                  <Button
+                    variant="ghost"
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={isProcessing}
+                  >
+                    {selectedFile ? '+ change file' : 'select zip file'}
+                  </Button>
+                  {selectedFile ? (
+                    <p className="font-mono text-[12.5px] text-ink-300">
+                      {selectedFile.name}{' '}
+                      <span className="text-ink-400">
+                        ({(selectedFile.size / 1024 / 1024).toFixed(2)} MB)
+                      </span>
+                    </p>
+                  ) : (
+                    <p className="font-sans text-[13px] text-ink-400">
+                      Select a zipped GitHub repository to process
+                    </p>
+                  )}
+                </div>
+              </div>
             )}
-          </div>
-        </div>
 
-        {progress && (
-          <div className="progress-section">
-            <div className="progress-header">
-              <h3>Processing Repository...</h3>
-              <span className="progress-percentage">{progress.percentage}%</span>
+            <div className="flex flex-col gap-2">
+              <label
+                htmlFor="maxFiles"
+                className="font-mono text-[11px] tracking-[0.14em] text-ink-400 uppercase"
+              >
+                maximum files
+              </label>
+              <input
+                id="maxFiles"
+                type="number"
+                value={maxFiles}
+                onChange={(e) => setMaxFiles(parseInt(e.target.value) || 50)}
+                min="1"
+                max="100"
+                disabled={isProcessing}
+                className="w-24 rounded-[2px] border border-ink-700 bg-ink-950/60 px-3 py-2 font-mono text-[13.5px] text-ink-100 transition-colors focus:border-phosphor-500 focus:outline-none disabled:opacity-40"
+              />
+              <span className="font-sans text-[12px] text-ink-400">
+                Limit the number of files to process (1–100)
+              </span>
             </div>
 
-            <div className="progress-bar">
-              <div
-                className="progress-fill"
-                style={{ width: `${progress.percentage}%` }}
-              ></div>
-            </div>
-
-            <div className="progress-details">
-              <p>
-                <strong>Current:</strong> {progress.current}
-              </p>
-              <p>
-                <strong>Progress:</strong> {progress.completed} / {progress.total} files
-              </p>
-              {progress.failed > 0 && (
-                <p className="failed-count">
-                  <strong>Failed:</strong> {progress.failed}
-                </p>
+            <div className="flex flex-wrap items-center gap-3">
+              <Button onClick={handleStartBatch} disabled={isProcessing} loading={isProcessing}>
+                {isProcessing ? 'processing…' : 'start batch processing'}
+              </Button>
+              {isProcessing && (
+                <Button variant="danger" onClick={handleCancelBatch}>
+                  cancel
+                </Button>
               )}
             </div>
           </div>
-        )}
+        </Panel>
+      </div>
 
-        {/* Show incremental results while still processing */}
-        {isProcessing && incrementalDocs.length > 0 && !result && (
-          <div className="result-section">
-            <div className="result-header">
-              <h2>Files Documented So Far</h2>
+      {/* progress + live file log */}
+      {progress && (
+        <Panel title="PROGRESS" active={isProcessing}>
+          <div className="flex flex-col gap-4 p-5">
+            <div className="flex flex-wrap items-baseline justify-between gap-2">
+              <span className="font-mono text-[13px] text-ink-300">
+                {isProcessing ? 'processing repository…' : 'processing finished'}
+              </span>
+              <span className="font-mono text-[12px] text-ink-400">
+                {progress.completed} / {progress.total} files
+                {progress.failed > 0 && (
+                  <span className="text-red"> · {progress.failed} failed</span>
+                )}
+              </span>
             </div>
 
-            <div className="result-content">
-              <div className="result-sidebar">
-                <div className="summary-card">
-                  <h3>Progress</h3>
-                  <div className="stat-grid">
-                    <div className="stat">
-                      <span className="stat-value">{progress?.total || '...'}</span>
-                      <span className="stat-label">Total Files</span>
-                    </div>
-                    <div className="stat success">
-                      <span className="stat-value">{incrementalDocs.filter(d => d.success).length}</span>
-                      <span className="stat-label">Success</span>
-                    </div>
-                    <div className="stat failed">
-                      <span className="stat-value">{incrementalDocs.filter(d => !d.success).length}</span>
-                      <span className="stat-label">Failed</span>
-                    </div>
-                  </div>
-                </div>
+            <ProgressBar value={progress.percentage} />
 
-                <div className="toc-section">
-                  <h3>Completed Files</h3>
-                  <div className="doc-list">
-                    {incrementalDocs.map((doc, index) => (
-                      <div
-                        key={index}
-                        className={`doc-item ${selectedDoc === doc ? 'active' : ''} ${!doc.success ? 'failed' : ''}`}
-                        onClick={() => setSelectedDoc(doc)}
-                      >
-                        <div className="doc-item-header">
-                          <span className="doc-status">
-                            {doc.success ? '+' : '-'}
-                          </span>
-                          <span className="doc-name">{doc.filePath.split('/').pop()}</span>
-                        </div>
-                        <div className="doc-item-path">{doc.filePath}</div>
-                        {doc.qualityScore && (
-                          <div className="doc-quality">
-                            Quality: {doc.qualityScore.score}/100
-                          </div>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </div>
+            <p className="truncate font-mono text-[12px] text-ink-400">
+              <span className="text-ink-300">current:</span> {progress.current}
+            </p>
 
-              <div className="result-main">
-                {selectedDoc ? (
-                  <div className="document-view">
-                    <div className="document-header">
-                      <h2>{selectedDoc.filePath}</h2>
-                      <span className="language-tag">{selectedDoc.language}</span>
-                    </div>
-
-                    {selectedDoc.success ? (
-                      <>
-                        <div className="markdown-content">
-                          <ReactMarkdown
-                      remarkPlugins={[remarkGfm]}
-                            components={{
-                              code({ node, inline, className, children, ...props }: any) {
-                                const match = /language-(\w+)/.exec(className || '')
-                                return !inline && match ? (
-                                  <SyntaxHighlighter
-                                    style={paperTheme}
-                                    language={match[1]}
-                                    PreTag="div"
-                                    {...props}
-                                  >
-                                    {String(children).replace(/\n$/, '')}
-                                  </SyntaxHighlighter>
-                                ) : (
-                                  <code className={className} {...props}>
-                                    {children}
-                                  </code>
-                                )
-                              }
-                            }}
-                          >
-                            {selectedDoc.documentation}
-                          </ReactMarkdown>
-                        </div>
-                        {selectedDoc.diagram && (
-                          <div className="diagram-section">
-                            <h3>Visual Diagram</h3>
-                            <div className="diagram-container" ref={diagramRef}></div>
-                          </div>
-                        )}
-                      </>
-                    ) : (
-                      <div className="error-view">
-                        <h3>Failed to generate documentation</h3>
-                        <p>{selectedDoc.error || 'Unknown error occurred'}</p>
-                      </div>
+            {isProcessing && incrementalDocs.length > 0 && !result && (
+              <div
+                ref={logRef}
+                className="max-h-64 overflow-y-auto border border-ink-700 bg-ink-950/60 p-3 font-mono text-[12.5px] leading-relaxed"
+              >
+                {incrementalDocs.map((doc, index) => (
+                  <div key={index} className="flex items-baseline gap-2">
+                    <span aria-hidden className={doc.success ? 'text-green' : 'text-red'}>
+                      {doc.success ? '✓' : '✗'}
+                    </span>
+                    <span className="min-w-0 flex-1 truncate text-ink-300">{doc.filePath}</span>
+                    {doc.qualityScore && (
+                      <span className="shrink-0 font-display text-[11px] text-ink-300 tabular-nums">
+                        {doc.qualityScore.score}
+                      </span>
                     )}
                   </div>
-                ) : (
-                  <div className="empty-view">
-                    <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-                      <path d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                    </svg>
-                    <p>Click a completed file to preview its documentation while processing continues</p>
-                  </div>
-                )}
+                ))}
               </div>
+            )}
+          </div>
+        </Panel>
+      )}
+
+      {/* results: TOC sidebar + detail pane */}
+      {result && (
+        <section className="flex min-h-0 flex-col gap-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <SectionHeader
+              title="batch complete"
+              meta={`${result.successCount}/${result.totalFiles} files documented`}
+              className="min-w-64 flex-1"
+            />
+            <div className="flex flex-wrap items-center gap-2">
+              {result.fullRepoDocumentation && (
+                <>
+                  <Button size="sm" variant="ghost" onClick={handleDownloadFullRepo}>
+                    ↓ markdown
+                  </Button>
+                  <Button size="sm" variant="ghost" onClick={handleDownloadHTML}>
+                    ↓ html
+                  </Button>
+                  <Button size="sm" variant="ghost" onClick={handleDownloadPDF}>
+                    ↓ pdf
+                  </Button>
+                </>
+              )}
+              <Button size="sm" variant="success" onClick={handleDownloadAll}>
+                ↓ all files
+              </Button>
             </div>
           </div>
-        )}
 
-        {result && (
-          <div className="result-section">
-            <div className="result-header">
-              <h2>Batch Complete!</h2>
-              <div className="header-actions">
+          <div className="grid min-h-0 grid-cols-1 gap-5 lg:grid-cols-[350px_1fr]">
+            <Panel title="CONTENTS" className="min-h-0 min-w-0 max-h-[800px] max-lg:max-h-[400px]">
+              {/* summary strip */}
+              <div className="grid shrink-0 grid-cols-3 gap-px border-b border-ink-700 bg-ink-700">
+                <div className="bg-ink-900 px-3 py-2.5 text-center">
+                  <span className="block font-display text-xl text-ink-100 tabular-nums">
+                    {result.totalFiles}
+                  </span>
+                  <span className="block font-mono text-[10px] tracking-wider text-ink-400 uppercase">
+                    total
+                  </span>
+                </div>
+                <div className="bg-ink-900 px-3 py-2.5 text-center">
+                  <span className="block font-display text-xl text-green tabular-nums">
+                    {result.successCount}
+                  </span>
+                  <span className="block font-mono text-[10px] tracking-wider text-ink-400 uppercase">
+                    success
+                  </span>
+                </div>
+                <div className="bg-ink-900 px-3 py-2.5 text-center">
+                  <span className="block font-display text-xl text-red tabular-nums">
+                    {result.failedCount}
+                  </span>
+                  <span className="block font-mono text-[10px] tracking-wider text-ink-400 uppercase">
+                    failed
+                  </span>
+                </div>
+              </div>
+
+              <div className="min-h-0 flex-1 overflow-y-auto">
                 {result.fullRepoDocumentation && (
-                  <>
-                    <button className="download-full-doc-btn" onClick={handleDownloadFullRepo}>
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-                        <polyline points="14 2 14 8 20 8"></polyline>
-                      </svg>
-                      Markdown
-                    </button>
-                    <button className="download-html-btn" onClick={handleDownloadHTML}>
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-                        <polyline points="14 2 14 8 20 8"></polyline>
-                        <path d="M16 13H8"></path>
-                        <path d="M16 17H8"></path>
-                        <path d="M10 9H8"></path>
-                      </svg>
-                      HTML
-                    </button>
-                    <button className="download-pdf-btn" onClick={handleDownloadPDF}>
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-                        <polyline points="14 2 14 8 20 8"></polyline>
-                        <line x1="16" y1="13" x2="8" y2="13"></line>
-                        <line x1="16" y1="17" x2="8" y2="17"></line>
-                        <line x1="10" y1="9" x2="8" y2="9"></line>
-                      </svg>
-                      PDF
-                    </button>
-                  </>
+                  <div
+                    onClick={() => setSelectedDoc(null)}
+                    className={`cursor-pointer border-b border-l-2 border-b-ink-700/60 px-4 py-3 transition-colors ${
+                      selectedDoc === null
+                        ? 'border-l-phosphor-400 bg-phosphor-400/5'
+                        : 'border-l-transparent hover:bg-ink-850'
+                    }`}
+                  >
+                    <div className="flex items-baseline gap-2 font-mono text-[13px] text-phosphor-300">
+                      <span aria-hidden className="shrink-0">*</span>
+                      <span className="min-w-0 flex-1 truncate">Full Repository Documentation</span>
+                    </div>
+                    <p className="mt-0.5 truncate pl-5 font-mono text-[11px] text-ink-400">
+                      Complete project overview
+                    </p>
+                  </div>
                 )}
-                <button className="download-all-btn" onClick={handleDownloadAll}>
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-                    <polyline points="7 10 12 15 17 10"></polyline>
-                    <line x1="12" y1="15" x2="12" y2="3"></line>
-                  </svg>
-                  All Files
-                </button>
-              </div>
-            </div>
-
-            <div className="result-content">
-              <div className="result-sidebar">
-                <div className="summary-card">
-                  <h3>Summary</h3>
-                  <div className="stat-grid">
-                    <div className="stat">
-                      <span className="stat-value">{result.totalFiles}</span>
-                      <span className="stat-label">Total Files</span>
-                    </div>
-                    <div className="stat success">
-                      <span className="stat-value">{result.successCount}</span>
-                      <span className="stat-label">Success</span>
-                    </div>
-                    <div className="stat failed">
-                      <span className="stat-value">{result.failedCount}</span>
-                      <span className="stat-label">Failed</span>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="toc-section">
-                  <h3>Table of Contents</h3>
-                  <div className="doc-list">
-                    {result.fullRepoDocumentation && (
-                      <div
-                        className={`doc-item full-repo-item ${selectedDoc === null && result.fullRepoDocumentation ? 'active' : ''}`}
-                        onClick={() => setSelectedDoc(null)}
+                {result.documents.map((doc, index) => (
+                  <div
+                    key={index}
+                    onClick={() => setSelectedDoc(doc)}
+                    className={`cursor-pointer border-b border-l-2 border-b-ink-700/60 px-4 py-3 transition-colors ${
+                      selectedDoc === doc
+                        ? 'border-l-phosphor-400 bg-phosphor-400/5'
+                        : 'border-l-transparent hover:bg-ink-850'
+                    }`}
+                  >
+                    <div className="flex items-baseline gap-2">
+                      <span
+                        aria-hidden
+                        className={`shrink-0 font-mono text-[12px] ${
+                          doc.success ? 'text-green' : 'text-red'
+                        }`}
                       >
-                        <div className="doc-item-header">
-                          <span className="doc-status">*</span>
-                          <span className="doc-name">Full Repository Documentation</span>
-                        </div>
-                        <div className="doc-item-path">Complete project overview</div>
-                      </div>
-                    )}
-                    {result.documents.map((doc, index) => (
-                      <div
-                        key={index}
-                        className={`doc-item ${selectedDoc === doc ? 'active' : ''} ${!doc.success ? 'failed' : ''}`}
-                        onClick={() => setSelectedDoc(doc)}
-                      >
-                        <div className="doc-item-header">
-                          <span className="doc-status">
-                            {doc.success ? '+' : '-'}
-                          </span>
-                          <span className="doc-name">{doc.filePath.split('/').pop()}</span>
-                        </div>
-                        <div className="doc-item-path">{doc.filePath}</div>
-                        {doc.qualityScore && (
-                          <div className="doc-quality">
-                            Quality: {doc.qualityScore.score}/100
-                          </div>
-                        )}
-                      </div>
-                    ))}
+                        {doc.success ? '✓' : '✗'}
+                      </span>
+                      <span className="min-w-0 flex-1 truncate font-mono text-[13px] text-ink-100">
+                        {doc.filePath.split('/').pop()}
+                      </span>
+                      {doc.qualityScore && (
+                        <span className="shrink-0 font-display text-[11px] text-ink-300 tabular-nums">
+                          {doc.qualityScore.score}
+                        </span>
+                      )}
+                    </div>
+                    <p className="mt-0.5 truncate pl-5 font-mono text-[11px] text-ink-400">
+                      {doc.filePath}
+                    </p>
                   </div>
-                </div>
+                ))}
               </div>
+            </Panel>
 
-              <div className="result-main">
+            <Panel
+              title="DOCUMENT"
+              active={!!selectedDoc || !!result.fullRepoDocumentation}
+              className="min-h-0 min-w-0 max-h-[800px] max-lg:max-h-[400px]"
+            >
+              <div className="min-h-0 flex-1 overflow-y-auto">
                 {selectedDoc ? (
-                  <div className="document-view">
-                    <div className="document-header">
-                      <h2>{selectedDoc.filePath}</h2>
-                      <span className="language-tag">{selectedDoc.language}</span>
+                  <div className="flex min-h-full flex-col gap-4 p-4">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <h2 className="min-w-0 truncate font-mono text-[14px] text-ink-100">
+                        {selectedDoc.filePath}
+                      </h2>
+                      <Badge tone="phosphor">{selectedDoc.language}</Badge>
                     </div>
 
                     {selectedDoc.success ? (
                       <>
-                        <div className="markdown-content">
-                          <ReactMarkdown
-                      remarkPlugins={[remarkGfm]}
-                            components={{
-                              code({ node, inline, className, children, ...props }: any) {
-                                const match = /language-(\w+)/.exec(className || '')
-                                return !inline && match ? (
-                                  <SyntaxHighlighter
-                                    style={paperTheme}
-                                    language={match[1]}
-                                    PreTag="div"
-                                    {...props}
-                                  >
-                                    {String(children).replace(/\n$/, '')}
-                                  </SyntaxHighlighter>
-                                ) : (
-                                  <code className={className} {...props}>
-                                    {children}
-                                  </code>
-                                )
-                              }
-                            }}
-                          >
-                            {selectedDoc.documentation}
-                          </ReactMarkdown>
-                        </div>
-                        {selectedDoc.diagram && (
-                          <div className="diagram-section">
-                            <h3>Visual Diagram</h3>
-                            <div className="diagram-container" ref={diagramRef}></div>
+                        {/* the printout */}
+                        <div className="border border-paper-300 shadow-[0_14px_40px_rgba(0,0,0,0.5)]">
+                          <div className="markdown-content">
+                            <ReactMarkdown
+                              remarkPlugins={[remarkGfm]}
+                              components={markdownComponents}
+                            >
+                              {selectedDoc.documentation}
+                            </ReactMarkdown>
+
+                            {selectedDoc.diagram && (
+                              <div className="border-t border-paper-300 px-2 pt-4 pb-2">
+                                <button
+                                  className="flex w-full cursor-pointer items-center justify-between font-mono text-[11px] tracking-[0.14em] text-print-400 uppercase"
+                                  onClick={() => setIsDiagramCollapsed(!isDiagramCollapsed)}
+                                >
+                                  <span>figure 1 — flow diagram</span>
+                                  <span aria-hidden>{isDiagramCollapsed ? '▸' : '▾'}</span>
+                                </button>
+                                {!isDiagramCollapsed && (
+                                  <div
+                                    ref={diagramRef}
+                                    className="mt-3 flex justify-center overflow-x-auto"
+                                  />
+                                )}
+                              </div>
+                            )}
                           </div>
+                        </div>
+
+                        {selectedDoc.qualityScore && (
+                          <QualityScore qualityScore={selectedDoc.qualityScore} />
                         )}
                       </>
                     ) : (
-                      <div className="error-view">
-                        <h3>Failed to generate documentation</h3>
-                        <p>{selectedDoc.error || 'Unknown error occurred'}</p>
+                      <div className="border border-red/25 bg-red/10 p-4">
+                        <p className="font-mono text-[13px] text-red">
+                          failed to generate documentation
+                        </p>
+                        <p className="mt-1 font-sans text-[13px] text-ink-300">
+                          {selectedDoc.error || 'Unknown error occurred'}
+                        </p>
                       </div>
                     )}
                   </div>
                 ) : result.fullRepoDocumentation ? (
-                  <div className="document-view full-repo-view">
-                    <div className="document-header">
-                      <h2>Full Repository Documentation</h2>
-                      <span className="language-tag">Complete Overview</span>
+                  <div className="flex min-h-full flex-col gap-4 p-4">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <h2 className="min-w-0 truncate font-mono text-[14px] text-ink-100">
+                        Full Repository Documentation
+                      </h2>
+                      <Badge tone="phosphor">complete overview</Badge>
                     </div>
-                    <div className="markdown-content">
-                      <ReactMarkdown
-                      remarkPlugins={[remarkGfm]}
-                        components={{
-                          code({ node, inline, className, children, ...props }: any) {
-                            const match = /language-(\w+)/.exec(className || '')
-                            return !inline && match ? (
-                              <SyntaxHighlighter
-                                style={paperTheme}
-                                language={match[1]}
-                                PreTag="div"
-                                {...props}
-                              >
-                                {String(children).replace(/\n$/, '')}
-                              </SyntaxHighlighter>
-                            ) : (
-                              <code className={className} {...props}>
-                                {children}
-                              </code>
-                            )
-                          }
-                        }}
-                      >
-                        {result.fullRepoDocumentation}
-                      </ReactMarkdown>
+
+                    {/* the printout */}
+                    <div className="border border-paper-300 shadow-[0_14px_40px_rgba(0,0,0,0.5)]">
+                      <div className="markdown-content">
+                        <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
+                          {result.fullRepoDocumentation}
+                        </ReactMarkdown>
+                      </div>
                     </div>
                   </div>
                 ) : (
-                  <div className="empty-view">
-                    <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-                      <path d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                    </svg>
-                    <p>Select a file from the table of contents to view its documentation</p>
-                  </div>
+                  <EmptyState
+                    glyph="¶"
+                    title="select a file"
+                    hint="Pick a file from the table of contents to view its documentation."
+                  />
                 )}
               </div>
-            </div>
+            </Panel>
           </div>
-        )}
+        </section>
+      )}
 
-        {!isProcessing && !result && (
-          <div className="info-section">
-            <h3>How Batch Processing Works</h3>
-            <ol>
-              <li>Choose input method: GitHub URL or Upload ZIP file</li>
-              <li>Set the maximum number of files to process</li>
-              <li>Click "Start Batch Processing"</li>
-              <li>Watch the progress as files are documented</li>
-              <li>Review all documentation and download</li>
-            </ol>
+      {/* how it works */}
+      {!isProcessing && !result && (
+        <section data-boot className="mt-2 flex flex-col gap-5">
+          <SectionHeader title="how batch processing works" />
 
-            <div className="features-grid">
-              <div className="feature">
-                <h4>ZIP Upload</h4>
-                <p>Upload a zipped repository directly for processing</p>
+          <div className="flex flex-col gap-2">
+            {HOW_IT_WORKS.map((step, index) => (
+              <div key={index} className="flex items-baseline gap-3 font-mono text-[13px] text-ink-300">
+                <span aria-hidden className="shrink-0 font-display text-[12px] text-phosphor-400">
+                  {String(index + 1).padStart(2, '0')}
+                </span>
+                <span>{step}</span>
               </div>
-              <div className="feature">
-                <h4>Auto-Detection</h4>
-                <p>Automatically detects code files in supported languages</p>
-              </div>
-              <div className="feature">
-                <h4>Progress Tracking</h4>
-                <p>Real-time progress updates and file-by-file status</p>
-              </div>
-              <div className="feature">
-                <h4>Table of Contents</h4>
-                <p>Organized documentation with navigation</p>
-              </div>
-              <div className="feature">
-                <h4>Download All</h4>
-                <p>Export complete documentation as Markdown</p>
-              </div>
-            </div>
+            ))}
           </div>
-        )}
-      </div>
+
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {FEATURES.map((feature) => (
+              <Panel key={feature.title} title={feature.title} className="min-h-0">
+                <p className="p-4 font-sans text-[13px] text-ink-400">{feature.body}</p>
+              </Panel>
+            ))}
+          </div>
+        </section>
+      )}
     </div>
   )
 }

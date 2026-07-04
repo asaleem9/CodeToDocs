@@ -1,6 +1,8 @@
 import { useNavigate, useLocation } from 'react-router-dom'
 import { useBatch } from '../contexts/BatchContext'
-import './BatchProgressModal.css'
+import Panel from './ui/Panel'
+import Button from './ui/Button'
+import ProgressBar from './ui/ProgressBar'
 
 function BatchProgressModal() {
   const navigate = useNavigate()
@@ -31,56 +33,44 @@ function BatchProgressModal() {
   }
 
   return (
-    <div className="batch-progress-modal">
-      <div className="modal-header">
-        <div className="modal-title">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
-          </svg>
-          <span>Processing {getRepoName()}</span>
-        </div>
-        <button className="modal-close" onClick={handleCancel} title="Cancel batch">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <line x1="18" y1="6" x2="6" y2="18"></line>
-            <line x1="6" y1="6" x2="18" y2="18"></line>
-          </svg>
-        </button>
-      </div>
+    <div className="fixed right-6 bottom-10 z-50 w-[340px] max-w-[calc(100vw-3rem)]">
+      <Panel title="JOB" active className="shadow-[0_16px_40px_rgba(0,0,0,0.55)]">
+        <div className="flex flex-col gap-3 p-4 pt-5">
+          <p className="truncate font-mono text-[13px] text-ink-100">
+            processing <span className="text-phosphor-300">{getRepoName()}</span>
+          </p>
 
-      {progress && (
-        <div className="modal-content">
-          <div className="modal-progress-bar">
-            <div
-              className="modal-progress-fill"
-              style={{ width: `${progress.percentage}%` }}
-            ></div>
-          </div>
+          {progress && (
+            <>
+              <ProgressBar value={progress.percentage} />
 
-          <div className="modal-stats">
-            <span className="modal-stat">
-              {progress.completed}/{progress.total} files
-            </span>
-            <span className="modal-percentage">{progress.percentage}%</span>
-          </div>
+              <div className="flex items-baseline justify-between font-mono text-[11px] text-ink-400">
+                <span>
+                  {progress.completed}/{progress.total} files
+                </span>
+                {progress.failed > 0 && (
+                  <span className="text-red">
+                    {progress.failed} file{progress.failed !== 1 ? 's' : ''} failed
+                  </span>
+                )}
+              </div>
 
-          <div className="modal-current">
-            <span className="modal-current-label">Current:</span>
-            <span className="modal-current-text">{progress.current}</span>
-          </div>
-
-          {progress.failed > 0 && (
-            <div className="modal-failed">
-              {progress.failed} file{progress.failed !== 1 ? 's' : ''} failed
-            </div>
+              <p className="truncate font-mono text-[12px] text-ink-400">
+                <span className="text-ink-300">current:</span> {progress.current}
+              </p>
+            </>
           )}
-        </div>
-      )}
 
-      <div className="modal-footer">
-        <button className="view-details-btn" onClick={handleViewDetails}>
-          View Details
-        </button>
-      </div>
+          <div className="flex items-center justify-end gap-2 border-t border-ink-700 pt-3">
+            <Button size="sm" variant="ghost" onClick={handleViewDetails}>
+              view details
+            </Button>
+            <Button size="sm" variant="danger" onClick={handleCancel}>
+              cancel
+            </Button>
+          </div>
+        </div>
+      </Panel>
     </div>
   )
 }

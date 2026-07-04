@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import axios from 'axios'
 import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { paperTheme } from '../lib/syntaxTheme'
 import { renderMermaid } from '../lib/mermaid'
@@ -348,6 +349,7 @@ function History() {
 
                 <div className="documentation-display">
                   <ReactMarkdown
+                      remarkPlugins={[remarkGfm]}
                     components={{
                       code({ node, inline, className, children, ...props }: any) {
                         const match = /language-(\w+)/.exec(className || '')

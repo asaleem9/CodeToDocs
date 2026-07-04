@@ -25,7 +25,7 @@
   --color-ink-800: #141d19;
   --color-ink-700: #1d2822;
   --color-ink-600: #2e3d35;
-  --color-ink-400: #5d7268;
+  --color-ink-400: #6b8477; /* ≥4.5:1 on ink-950 — used for meta text */
   --color-ink-300: #8ca69a;
   --color-ink-100: #e2efe9;
 
@@ -79,38 +79,6 @@
     71% { opacity: 0.987; }
     72% { opacity: 1; }
   }
-}
-
-/* ── Legacy alias bridge — re-skins unconverted pages onto the new palette.
-      Every page still on hand-written CSS reads these names. Delete in M6. ── */
-:root {
-  --bg-base: var(--color-ink-950);
-  --bg-surface: var(--color-ink-900);
-  --bg-elevated: var(--color-ink-850);
-  --border-default: var(--color-ink-700);
-  --border-hover: var(--color-ink-600);
-  --text-primary: var(--color-ink-100);
-  --text-secondary: var(--color-ink-300);
-  --text-muted: var(--color-ink-400);
-  --accent: var(--color-phosphor-200);
-  --accent-hover: var(--color-phosphor-300);
-  --accent-muted: color-mix(in srgb, var(--color-phosphor-400) 9%, transparent);
-  --success: var(--color-green);
-  --error: var(--color-red);
-  --teal: var(--color-phosphor-400);
-  --amber: var(--color-amber);
-  --font-mono: 'JetBrains Mono Variable', 'JetBrains Mono', ui-monospace, monospace;
-}
-
-/* Part of the legacy bridge: preflight strips list styles/margins, but the
-   unconverted pages wrote their lists against UA defaults. Delete in M6. */
-.batch-page ol, .batch-page ul,
-.github-page ol, .github-page ul,
-.settings-page ol, .settings-page ul,
-.integrations-page ol, .integrations-page ul {
-  list-style: revert;
-  padding-left: revert;
-  margin: revert;
 }
 
 /* ── Effects ── */

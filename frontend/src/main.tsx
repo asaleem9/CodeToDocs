@@ -3,7 +3,14 @@ import ReactDOM from 'react-dom/client'
 import axios from 'axios'
 import App from './App'
 import config from './config'
+import '@fontsource-variable/jetbrains-mono'
+import '@fontsource/ibm-plex-sans/400.css'
+import '@fontsource/ibm-plex-sans/500.css'
+import '@fontsource/ibm-plex-sans/600.css'
+import '@fontsource-variable/newsreader'
+import '@fontsource-variable/newsreader/wght-italic.css'
 import './index.css'
+import './styles/markdown.css'
 
 // Capture the signed app token from the OAuth redirect fragment (fragments are
 // not sent to servers or included in the Referer header). Store it and clean the

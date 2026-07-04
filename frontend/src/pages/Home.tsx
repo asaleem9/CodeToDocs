@@ -2,8 +2,8 @@ import { useState, useEffect, useRef } from 'react'
 import axios from 'axios'
 import ReactMarkdown from 'react-markdown'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
-import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism'
-import mermaid from 'mermaid'
+import { paperTheme } from '../lib/syntaxTheme'
+import { renderMermaid } from '../lib/mermaid'
 import QualityScore from '../components/QualityScore'
 import { demoSamples } from '../data/demoSamples'
 import { downloadAsMarkdown, downloadAsHTML, copyAsMarkdown, copyAsHTML } from '../utils/exportUtils'
@@ -22,22 +22,6 @@ interface QualityScoreData {
     codeBlocksCount: number
   }
 }
-
-// Initialize mermaid
-mermaid.initialize({
-  startOnLoad: false,
-  theme: 'dark',
-  themeVariables: {
-    darkMode: true,
-    background: '#111113',
-    primaryColor: '#e0e7ff',
-    primaryTextColor: '#fafafa',
-    primaryBorderColor: '#27272a',
-    lineColor: '#a1a1aa',
-    secondaryColor: '#a5b4fc',
-    tertiaryColor: '#0a0a0b',
-  },
-})
 
 function Home() {
   const [code, setCode] = useState<string>('')
@@ -59,36 +43,7 @@ function Home() {
   // Render diagram when it changes
   useEffect(() => {
     if (diagram && diagramRef.current) {
-      const renderDiagram = async () => {
-        try {
-          diagramRef.current!.innerHTML = ''
-
-          // Clean up the diagram string (remove any markdown code fences)
-          let cleanDiagram = diagram.trim()
-          if (cleanDiagram.startsWith('```mermaid')) {
-            cleanDiagram = cleanDiagram.replace(/^```mermaid\n/, '').replace(/\n```$/, '')
-          } else if (cleanDiagram.startsWith('```')) {
-            cleanDiagram = cleanDiagram.replace(/^```\n/, '').replace(/\n```$/, '')
-          }
-
-          // Generate unique ID for each render
-          const diagramId = `mermaid-diagram-${Date.now()}`
-          const { svg } = await mermaid.render(diagramId, cleanDiagram)
-          diagramRef.current!.innerHTML = svg
-        } catch (error: any) {
-          console.error('Error rendering diagram:', error)
-          console.error('Diagram content:', diagram)
-          diagramRef.current!.innerHTML = `
-            <div style="color: #fca5a5; padding: 1rem;">
-              <p style="font-weight: 600;">Error rendering diagram</p>
-              <p style="font-size: 0.875rem; margin-top: 0.5rem;">
-                ${error.message || 'Invalid diagram syntax'}
-              </p>
-            </div>
-          `
-        }
-      }
-      renderDiagram()
+      renderMermaid(diagramRef.current, diagram)
     }
   }, [diagram])
 
@@ -268,7 +223,7 @@ function Home() {
   }
 
   return (
-    <>
+    <div className="home-page mx-auto flex w-full max-w-[1600px] flex-1 min-h-0 flex-col gap-6 p-6">
       <div className="controls">
         <div className="demo-button-wrapper">
           <button
@@ -455,7 +410,7 @@ function Home() {
                       const match = /language-(\w+)/.exec(className || '')
                       return !inline && match ? (
                         <SyntaxHighlighter
-                          style={vscDarkPlus}
+                          style={paperTheme}
                           language={match[1]}
                           PreTag="div"
                           {...props}
@@ -511,7 +466,7 @@ function Home() {
           </div>
         </div>
       </div>
-    </>
+    </div>
   )
 }
 

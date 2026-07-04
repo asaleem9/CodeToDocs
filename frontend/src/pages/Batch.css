@@ -610,10 +610,6 @@
   font-family: var(--font-mono);
 }
 
-.markdown-content {
-  color: var(--text-primary);
-}
-
 .diagram-section {
   margin-top: 2rem;
   padding: 1.5rem;

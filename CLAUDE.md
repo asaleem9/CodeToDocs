@@ -12,6 +12,12 @@ the map for working in the codebase.
   primitives, `src/lib` shared modules, `src/utils`)
 - `shared/` — types shared across both
 - `.github/workflows/` — Cloud Run auto-deploy (`deploy-backend.yml`, `deploy-frontend.yml`)
+- `videos/` — gitignored; HyperFrames video productions (the launch video lives in
+  `videos/codetodocs-launch`, final render under its `renders/`)
+
+This is an **npm workspaces** monorepo: the single `package-lock.json` lives at the repo root
+(a `frontend/package-lock.json` should never exist). Installing from a workspace dir updates
+the root lockfile — commit it.
 
 ## Commands
 
@@ -20,6 +26,10 @@ Backend (`cd backend`): `npm run dev` (nodemon + tsx), `npm run build` (tsc), `n
 Frontend (`cd frontend`): `npm run dev` (Vite), `npm run build` (tsc + vite build). Typecheck: `npx tsc --noEmit`.
 
 Run `npx tsc --noEmit` in the changed package before committing.
+
+Local dev quirk: if another project holds port 5173, Vite moves to 5174 and the backend's CORS
+check rejects the browser. Start the backend with `FRONTEND_URL=http://localhost:<vite-port>`
+(the frontend's own `/api` calls use an absolute `localhost:3001` URL, not the Vite proxy).
 
 ## Auth & identity model — read before touching auth
 

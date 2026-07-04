@@ -2,8 +2,8 @@ import { useState, useEffect, useRef } from 'react'
 import axios from 'axios'
 import ReactMarkdown from 'react-markdown'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
-import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism'
-import mermaid from 'mermaid'
+import { paperTheme } from '../lib/syntaxTheme'
+import { renderMermaid } from '../lib/mermaid'
 import QualityScore from '../components/QualityScore'
 import { showErrorToast, showSuccessToast } from '../utils/errorHandler'
 import './History.css'
@@ -22,21 +22,6 @@ interface QualityScoreData {
   }
 }
 
-// Initialize mermaid
-mermaid.initialize({
-  startOnLoad: false,
-  theme: 'dark',
-  themeVariables: {
-    darkMode: true,
-    background: '#111113',
-    primaryColor: '#e0e7ff',
-    primaryTextColor: '#fafafa',
-    primaryBorderColor: '#27272a',
-    lineColor: '#a1a1aa',
-    secondaryColor: '#a5b4fc',
-    tertiaryColor: '#0a0a0b',
-  },
-})
 
 interface StoredDoc {
   id: string
@@ -77,34 +62,7 @@ function History() {
   // Render diagram when selected doc changes
   useEffect(() => {
     if (selectedDoc?.diagram && diagramRef.current) {
-      const renderDiagram = async () => {
-        try {
-          diagramRef.current!.innerHTML = ''
-
-          // Clean up the diagram string (remove any markdown code fences)
-          let cleanDiagram = selectedDoc.diagram!.trim()
-          if (cleanDiagram.startsWith('```mermaid')) {
-            cleanDiagram = cleanDiagram.replace(/^```mermaid\n/, '').replace(/\n```$/, '')
-          } else if (cleanDiagram.startsWith('```')) {
-            cleanDiagram = cleanDiagram.replace(/^```\n/, '').replace(/\n```$/, '')
-          }
-
-          const { svg } = await mermaid.render(`mermaid-diagram-${selectedDoc.id}`, cleanDiagram)
-          diagramRef.current!.innerHTML = svg
-        } catch (error: any) {
-          console.error('Error rendering diagram:', error)
-          console.error('Diagram content:', selectedDoc.diagram)
-          diagramRef.current!.innerHTML = `
-            <div style="color: #fca5a5; padding: 1rem;">
-              <p style="font-weight: 600;">Error rendering diagram</p>
-              <p style="font-size: 0.875rem; margin-top: 0.5rem;">
-                ${error.message || 'Invalid diagram syntax'}
-              </p>
-            </div>
-          `
-        }
-      }
-      renderDiagram()
+      renderMermaid(diagramRef.current, selectedDoc.diagram)
     }
   }, [selectedDoc])
 
@@ -395,7 +353,7 @@ function History() {
                         const match = /language-(\w+)/.exec(className || '')
                         return !inline && match ? (
                           <SyntaxHighlighter
-                            style={vscDarkPlus}
+                            style={paperTheme}
                             language={match[1]}
                             PreTag="div"
                             {...props}

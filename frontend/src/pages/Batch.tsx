@@ -3,28 +3,13 @@ import { useLocation } from 'react-router-dom'
 import axios from 'axios'
 import ReactMarkdown from 'react-markdown'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
-import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism'
-import mermaid from 'mermaid'
+import { paperTheme } from '../lib/syntaxTheme'
+import { renderMermaid } from '../lib/mermaid'
 import { useBatch } from '../contexts/BatchContext'
 import { showErrorToast, showSuccessToast, showLoadingToast, dismissToast } from '../utils/errorHandler'
 import { downloadAsHTML, downloadAsPDF } from '../utils/exportUtils'
 import './Batch.css'
 
-// Initialize mermaid
-mermaid.initialize({
-  startOnLoad: false,
-  theme: 'dark',
-  themeVariables: {
-    darkMode: true,
-    background: '#111113',
-    primaryColor: '#e0e7ff',
-    primaryTextColor: '#fafafa',
-    primaryBorderColor: '#27272a',
-    lineColor: '#a1a1aa',
-    secondaryColor: '#a5b4fc',
-    tertiaryColor: '#0a0a0b',
-  },
-})
 
 interface BatchProgress {
   total: number
@@ -167,24 +152,7 @@ function Batch() {
   useEffect(() => {
     const diagram = selectedDoc?.diagram
     if (diagram && diagramRef.current) {
-      const renderDiagram = async () => {
-        try {
-          diagramRef.current!.innerHTML = ''
-          let cleanDiagram = diagram.trim()
-          if (cleanDiagram.startsWith('```mermaid')) {
-            cleanDiagram = cleanDiagram.replace(/^```mermaid\n/, '').replace(/\n```$/, '')
-          } else if (cleanDiagram.startsWith('```')) {
-            cleanDiagram = cleanDiagram.replace(/^```\n/, '').replace(/\n```$/, '')
-          }
-          const diagramId = `mermaid-batch-${Date.now()}`
-          const { svg } = await mermaid.render(diagramId, cleanDiagram)
-          diagramRef.current!.innerHTML = svg
-        } catch (error: any) {
-          console.error('Error rendering diagram:', error)
-          diagramRef.current!.innerHTML = ''
-        }
-      }
-      renderDiagram()
+      renderMermaid(diagramRef.current, diagram)
     }
   }, [selectedDoc])
 
@@ -610,7 +578,7 @@ function Batch() {
                                 const match = /language-(\w+)/.exec(className || '')
                                 return !inline && match ? (
                                   <SyntaxHighlighter
-                                    style={vscDarkPlus}
+                                    style={paperTheme}
                                     language={match[1]}
                                     PreTag="div"
                                     {...props}
@@ -778,7 +746,7 @@ function Batch() {
                                 const match = /language-(\w+)/.exec(className || '')
                                 return !inline && match ? (
                                   <SyntaxHighlighter
-                                    style={vscDarkPlus}
+                                    style={paperTheme}
                                     language={match[1]}
                                     PreTag="div"
                                     {...props}
@@ -823,7 +791,7 @@ function Batch() {
                             const match = /language-(\w+)/.exec(className || '')
                             return !inline && match ? (
                               <SyntaxHighlighter
-                                style={vscDarkPlus}
+                                style={paperTheme}
                                 language={match[1]}
                                 PreTag="div"
                                 {...props}

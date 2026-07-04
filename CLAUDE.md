@@ -8,7 +8,8 @@ the map for working in the codebase.
 ## Layout
 
 - `backend/` — Express API (`src/routes`, `src/services`, `src/middleware`, `src/utils`, `src/db`)
-- `frontend/` — React 18 + Vite SPA (`src/pages`, `src/contexts`, `src/components`, `src/utils`)
+- `frontend/` — React 18 + Vite SPA (`src/pages`, `src/contexts`, `src/components` + `components/ui`
+  primitives, `src/lib` shared modules, `src/utils`)
 - `shared/` — types shared across both
 - `.github/workflows/` — Cloud Run auto-deploy (`deploy-backend.yml`, `deploy-frontend.yml`)
 
@@ -87,6 +88,34 @@ secret the service needs): `ANTHROPIC_API_KEY`, `FRONTEND_URL`, `SESSION_SECRET`
 Other config that must stay in sync: the GitHub OAuth app's callback URL
 (`https://codetodocs-backend-…run.app/api/auth/github/callback`) and `FRONTEND_URL` (drives CORS —
 keep it exactly matching the frontend origin; a trailing slash is tolerated but nothing else).
+
+## Frontend design system — "refined terminal"
+
+The UI is a phosphor-dark terminal; generated documentation renders as a light "paper"
+sheet (the only light surface). Styling is **Tailwind v4** — no per-page CSS files, no
+tailwind.config; every token lives in the `@theme` block in `frontend/src/index.css`
+(ink/phosphor/signal/paper/print color scales, font stacks, keyframes) plus `@utility`
+effects (glow, scanlines). Don't hardcode hex values in components; use the token classes.
+
+- **Fonts** (self-hosted): Departure Mono (vendored woff2 in `src/assets/fonts`, single 400
+  weight — never synthesize bold) for display/chrome via `font-display`; JetBrains Mono
+  (`font-mono`) for code/controls; IBM Plex Sans (`font-sans`) for prose; Newsreader
+  (`font-serif`) for rendered docs on paper only.
+- **Primitives** in `src/components/ui/`: `Panel` (TUI frame + `[ TITLE ]` tab + corner
+  brackets, `paper` variant), `Button`/`buttonClasses`, `Badge`, `ProgressBar`, `Spinner`,
+  `EmptyState`, `SectionHeader`, `Menu`. Build new UI from these, not bespoke markup.
+- **Paper surfaces**: rendered markdown always sits in `.markdown-content`
+  (`src/styles/markdown.css`); mermaid + syntax themes that match it live in
+  `src/lib/mermaid.ts` and `src/lib/syntaxTheme.ts` (use `renderMermaid`, never init mermaid
+  per page). Language chip colors: `src/lib/languages.ts`.
+- **Motion**: GSAP via helpers in `src/lib/motion.ts` (`bootSequence`, `typeOn`, `decode`,
+  `countUp`, `revealBatch`) — all honor `prefers-reduced-motion`. Gotcha: GSAP leaves inline
+  transforms that create stacking contexts and trap popovers; `bootSequence` clears them
+  (`clearProps`) — do the same in new tweens on containers holding menus.
+- Grid children that contain generated docs need `min-w-0` or wide code lines force
+  horizontal overflow.
+- Export templates (`src/utils/exportUtils.ts`) share the paper/ink look — keep them in
+  sync with `styles/markdown.css` when the paper palette changes.
 
 ## Frontend layout note
 

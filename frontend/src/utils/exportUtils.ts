@@ -145,338 +145,209 @@ export async function downloadAsPDF(
 }
 
 /**
- * Format HTML document for printing/PDF with optimized print styles
+ * Shared paper stylesheet for exported documents — matches the in-app
+ * "printout" surface: warm paper, ink text, serif headings, mono code.
  */
-function formatPrintableDocument(htmlContent: string, metadata: ExportMetadata): string {
-  return `<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="UTF-8">
-  <title>Documentation - ${escapeHtml(metadata.language)}</title>
-  <style>
-    @page {
-      margin: 15mm;
-      size: A4;
+const PAPER_CSS = `
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    :root {
+      --paper: #f2ecdf;
+      --paper-dim: #e7dfcc;
+      --paper-line: #d5c9ae;
+      --paper-meta: #a89a76;
+      --ink: #1a1c19;
+      --ink-soft: #494f49;
+      --ink-faint: #767c72;
+      --accent: #0d9488;
     }
 
+    body {
+      font-family: Georgia, 'Times New Roman', serif;
+      line-height: 1.72;
+      color: var(--ink);
+      background: var(--paper);
+      padding: 3rem 2rem;
+    }
+
+    .sheet {
+      max-width: 820px;
+      margin: 0 auto;
+    }
+
+    .masthead {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      border-bottom: 2px solid var(--ink);
+      padding-bottom: 0.6rem;
+      margin-bottom: 0.75rem;
+    }
+
+    .masthead .brand,
+    .masthead .doc-date,
+    .colophon,
+    .footer {
+      font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+      font-size: 11px;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--ink-soft);
+    }
+
+    .colophon {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.4rem 1.5rem;
+      border-bottom: 1px solid var(--paper-line);
+      padding-bottom: 0.75rem;
+      margin-bottom: 2rem;
+      color: var(--ink-faint);
+    }
+
+    .colophon strong { color: var(--ink-soft); font-weight: 600; }
+
+    h1, h2, h3, h4, h5, h6 {
+      font-weight: 600;
+      color: var(--ink);
+      margin-top: 1.75rem;
+      margin-bottom: 0.75rem;
+      letter-spacing: -0.01em;
+      page-break-after: avoid;
+    }
+
+    h1 { font-size: 1.9rem; line-height: 1.25; padding-bottom: 0.6rem; border-bottom: 1px solid var(--paper-line); }
+    h2 { font-size: 1.45rem; padding-bottom: 0.35rem; border-bottom: 1px solid var(--paper-dim); }
+    h3 { font-size: 1.2rem; }
+    h4, h5, h6 { font-size: 1.05rem; }
+
+    p { margin-bottom: 1rem; }
+
+    ul, ol { margin-bottom: 1rem; padding-left: 1.6rem; }
+    li { margin-bottom: 0.4rem; }
+    li::marker { color: var(--paper-meta); }
+
+    code {
+      font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+      font-size: 0.82em;
+      background: var(--paper-dim);
+      color: var(--ink);
+      padding: 0.15rem 0.4rem;
+      border-radius: 2px;
+    }
+
+    pre {
+      margin: 1.1rem 0;
+      padding: 1rem 1.2rem;
+      background: var(--paper-dim);
+      border: 1px solid var(--paper-line);
+      border-radius: 2px;
+      overflow-x: auto;
+      page-break-inside: avoid;
+    }
+
+    pre code { background: transparent; padding: 0; font-size: 0.85rem; line-height: 1.6; }
+
+    blockquote {
+      border-left: 3px solid var(--paper-meta);
+      padding-left: 1.1rem;
+      margin: 1.1rem 0;
+      color: var(--ink-soft);
+      font-style: italic;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 1.1rem 0;
+      font-size: 0.95rem;
+      page-break-inside: avoid;
+    }
+
+    th, td { border: 1px solid var(--paper-line); padding: 0.5rem 0.7rem; text-align: left; }
+    th { background: var(--paper-dim); font-weight: 600; }
+
+    a { color: var(--accent); text-decoration: underline; text-underline-offset: 2px; }
+
+    hr { border: 0; border-top: 1px solid var(--paper-line); margin: 1.5rem 0; }
+
+    .footer {
+      margin-top: 3rem;
+      border-top: 1px solid var(--paper-line);
+      padding-top: 0.75rem;
+      display: flex;
+      justify-content: space-between;
+      color: var(--ink-faint);
+    }
+
+    p, li, blockquote { orphans: 3; widows: 3; }
+`;
+
+function metadataColophon(metadata: ExportMetadata): string {
+  const items: string[] = [
+    `<span><strong>language</strong> ${escapeHtml(metadata.language)}</span>`,
+    `<span><strong>generated</strong> ${escapeHtml(metadata.generatedAt.toLocaleString())}</span>`,
+  ];
+  if (metadata.qualityScore !== undefined) {
+    items.push(`<span><strong>quality</strong> ${escapeHtml(metadata.qualityScore)}/100</span>`);
+  }
+  if (metadata.prInfo) {
+    items.push(
+      `<span><strong>source</strong> PR #${escapeHtml(metadata.prInfo.prNumber)} · ${escapeHtml(metadata.prInfo.repository)}</span>`,
+      `<span><strong>branch</strong> ${escapeHtml(metadata.prInfo.branch)}</span>`,
+      `<span><strong>author</strong> ${escapeHtml(metadata.prInfo.author)}</span>`
+    );
+  }
+  return `<div class="colophon">${items.join('')}</div>`;
+}
+
+function paperDocument(
+  htmlContent: string,
+  metadata: ExportMetadata,
+  extraCss = ''
+): string {
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Documentation - ${escapeHtml(metadata.language)}</title>
+  <style>${PAPER_CSS}${extraCss}</style>
+</head>
+<body>
+  <div class="sheet">
+    <div class="masthead">
+      <span class="brand">&gt; CodeToDocs</span>
+      <span class="doc-date">${escapeHtml(metadata.generatedAt.toLocaleDateString())}</span>
+    </div>
+    ${metadataColophon(metadata)}
+    <div class="content">
+      ${htmlContent}
+    </div>
+    <div class="footer">
+      <span>typeset by CodeToDocs</span>
+      <span>${escapeHtml(metadata.language)} · ${escapeHtml(metadata.generatedAt.toLocaleDateString())}</span>
+    </div>
+  </div>
+</body>
+</html>`;
+}
+
+/**
+ * Format HTML document for printing/PDF with print-tuned page rules
+ */
+function formatPrintableDocument(htmlContent: string, metadata: ExportMetadata): string {
+  const printCss = `
+    @page { margin: 15mm; size: A4; }
     @media print {
       body {
         -webkit-print-color-adjust: exact !important;
         print-color-adjust: exact !important;
-        color-adjust: exact !important;
       }
     }
-
-    * {
-      margin: 0;
-      padding: 0;
-      box-sizing: border-box;
-    }
-
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', sans-serif;
-      line-height: 1.8;
-      color: #1e293b;
-      background: linear-gradient(135deg, #f8fafc 0%, #ffffff 100%);
-      padding: 25px;
-      font-size: 12px;
-    }
-
-    /* Beautiful header */
-    .header {
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-      color: white;
-      padding: 20px;
-      border-radius: 12px;
-      margin-bottom: 25px;
-      box-shadow: 0 8px 20px rgba(102, 126, 234, 0.3);
-      page-break-inside: avoid;
-    }
-
-    .header h1 {
-      font-size: 24px;
-      margin-bottom: 5px;
-      font-weight: 700;
-      color: white;
-      border: none;
-      padding: 0;
-    }
-
-    .header .subtitle {
-      font-size: 11px;
-      opacity: 0.9;
-    }
-
-    /* Metadata box */
-    .metadata {
-      background: linear-gradient(135deg, #f1f5f9 0%, #e2e8f0 100%);
-      border-left: 5px solid #818cf8;
-      border-radius: 8px;
-      padding: 15px;
-      margin-bottom: 25px;
-      page-break-inside: avoid;
-      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
-    }
-
-    .metadata-grid {
-      display: grid;
-      grid-template-columns: repeat(2, 1fr);
-      gap: 8px;
-    }
-
-    .metadata-item {
-      font-size: 10px;
-      color: #475569;
-    }
-
-    .metadata-item strong {
-      color: #334155;
-      font-weight: 600;
-    }
-
-    .metadata-label {
-      display: inline-block;
-      background: #818cf8;
-      color: white;
-      padding: 2px 8px;
-      border-radius: 4px;
-      font-size: 9px;
-      font-weight: 600;
-      margin-right: 5px;
-    }
-
-    /* Content styling */
-    h1 {
-      font-size: 22px;
-      margin-top: 20px;
-      margin-bottom: 12px;
-      color: #667eea;
-      border-bottom: 3px solid #818cf8;
-      padding-bottom: 6px;
-      page-break-after: avoid;
-      font-weight: 700;
-    }
-
-    h2 {
-      font-size: 18px;
-      margin-top: 18px;
-      margin-bottom: 10px;
-      color: #764ba2;
-      border-bottom: 2px solid #c084fc;
-      padding-bottom: 5px;
-      page-break-after: avoid;
-      font-weight: 600;
-    }
-
-    h3 {
-      font-size: 15px;
-      margin-top: 15px;
-      margin-bottom: 8px;
-      color: #4f46e5;
-      page-break-after: avoid;
-      font-weight: 600;
-    }
-
-    h4, h5, h6 {
-      font-size: 13px;
-      margin-top: 12px;
-      margin-bottom: 6px;
-      color: #6366f1;
-      page-break-after: avoid;
-      font-weight: 600;
-    }
-
-    p {
-      margin-bottom: 10px;
-      color: #334155;
-      text-align: justify;
-    }
-
-    ul, ol {
-      margin-bottom: 12px;
-      padding-left: 25px;
-      color: #334155;
-    }
-
-    li {
-      margin-bottom: 6px;
-      line-height: 1.7;
-    }
-
-    /* Inline code */
-    code {
-      background: linear-gradient(135deg, #fdf4ff 0%, #fae8ff 100%);
-      color: #a21caf;
-      padding: 3px 6px;
-      border-radius: 4px;
-      font-size: 11px;
-      font-family: 'Monaco', 'Courier New', monospace;
-      border: 1px solid #e9d5ff;
-      font-weight: 500;
-    }
-
-    /* Code blocks */
-    pre {
-      background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
-      color: #e2e8f0;
-      padding: 16px;
-      border-radius: 10px;
-      overflow-x: auto;
-      margin: 15px 0;
-      page-break-inside: avoid;
-      border: 2px solid #334155;
-      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-    }
-
-    pre code {
-      background: transparent;
-      color: inherit;
-      padding: 0;
-      font-size: 10px;
-      border: none;
-      line-height: 1.6;
-    }
-
-    /* Blockquotes */
-    blockquote {
-      border-left: 5px solid #818cf8;
-      background: #f8fafc;
-      padding: 12px 15px;
-      margin: 15px 0;
-      color: #475569;
-      font-style: italic;
-      border-radius: 0 8px 8px 0;
-      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.05);
-    }
-
-    /* Tables */
-    table {
-      width: 100%;
-      border-collapse: collapse;
-      margin: 15px 0;
-      font-size: 11px;
-      page-break-inside: avoid;
-      border-radius: 8px;
-      overflow: hidden;
-      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
-    }
-
-    th, td {
-      border: 1px solid #e2e8f0;
-      padding: 10px;
-      text-align: left;
-    }
-
-    th {
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-      color: white;
-      font-weight: 600;
-    }
-
-    tr:nth-child(even) {
-      background: #f8fafc;
-    }
-
-    /* Links */
-    a {
-      color: #818cf8;
-      text-decoration: none;
-      font-weight: 500;
-      border-bottom: 1px dotted #818cf8;
-    }
-
-    /* Lists styling */
-    ul li::marker {
-      color: #818cf8;
-      font-weight: bold;
-    }
-
-    ol li::marker {
-      color: #818cf8;
-      font-weight: bold;
-    }
-
-    /* Footer */
-    .footer {
-      margin-top: 40px;
-      padding: 20px;
-      background: linear-gradient(135deg, #f1f5f9 0%, #e2e8f0 100%);
-      border-radius: 10px;
-      text-align: center;
-      color: #64748b;
-      font-size: 10px;
-      border-top: 3px solid #818cf8;
-    }
-
-    .footer strong {
-      color: #475569;
-      font-weight: 600;
-    }
-
-    /* Better pagination */
-    p, li, blockquote {
-      orphans: 3;
-      widows: 3;
-    }
-
-    h1, h2, h3, h4, h5, h6 {
-      page-break-after: avoid;
-    }
-  </style>
-</head>
-<body>
-  <div class="header">
-    <h1>📘 ${escapeHtml(metadata.language)} Documentation</h1>
-    <div class="subtitle">Generated with CodeToDocsAI • ${escapeHtml(metadata.generatedAt.toLocaleDateString())}</div>
-  </div>
-
-  <div class="metadata">
-    <div class="metadata-grid">
-      <div class="metadata-item">
-        <span class="metadata-label">LANGUAGE</span>
-        <strong>${escapeHtml(metadata.language)}</strong>
-      </div>
-      <div class="metadata-item">
-        <span class="metadata-label">DATE</span>
-        <strong>${escapeHtml(metadata.generatedAt.toLocaleString())}</strong>
-      </div>
-      ${metadata.qualityScore !== undefined ? `
-        <div class="metadata-item">
-          <span class="metadata-label">QUALITY</span>
-          <strong>${escapeHtml(metadata.qualityScore)}/100</strong>
-        </div>
-      ` : ''}
-      ${metadata.prInfo ? `
-        <div class="metadata-item">
-          <span class="metadata-label">SOURCE</span>
-          <strong>PR #${escapeHtml(metadata.prInfo.prNumber)}</strong>
-        </div>
-        <div class="metadata-item">
-          <span class="metadata-label">REPO</span>
-          <strong>${escapeHtml(metadata.prInfo.repository)}</strong>
-        </div>
-        <div class="metadata-item">
-          <span class="metadata-label">BRANCH</span>
-          <strong>${escapeHtml(metadata.prInfo.branch)}</strong>
-        </div>
-        <div class="metadata-item">
-          <span class="metadata-label">AUTHOR</span>
-          <strong>${escapeHtml(metadata.prInfo.author)}</strong>
-        </div>
-      ` : ''}
-    </div>
-  </div>
-
-  <div class="content">
-    ${htmlContent}
-  </div>
-
-  <div class="footer">
-    <strong>Generated by CodeToDocsAI</strong><br>
-    Powered by Claude AI • Anthropic
-  </div>
-</body>
-</html>`;
+    body { padding: 1.5rem; font-size: 12.5px; }
+`;
+  return paperDocument(htmlContent, metadata, printCss);
 }
 
 /**
@@ -517,188 +388,5 @@ function formatHTMLDocument(
   htmlContent: string,
   metadata: ExportMetadata
 ): string {
-  return `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Documentation - ${escapeHtml(metadata.language)}</title>
-  <style>
-    * {
-      margin: 0;
-      padding: 0;
-      box-sizing: border-box;
-    }
-
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', sans-serif;
-      line-height: 1.6;
-      color: #1e293b;
-      background: #f8fafc;
-      padding: 2rem;
-      max-width: 900px;
-      margin: 0 auto;
-    }
-
-    .metadata {
-      background: #f1f5f9;
-      border-left: 4px solid #818cf8;
-      padding: 1.5rem;
-      margin-bottom: 2rem;
-      border-radius: 8px;
-    }
-
-    .metadata h3 {
-      margin-bottom: 1rem;
-      color: #334155;
-    }
-
-    .metadata-list {
-      list-style: none;
-    }
-
-    .metadata-list li {
-      padding: 0.25rem 0;
-      color: #64748b;
-    }
-
-    .metadata-list strong {
-      color: #475569;
-    }
-
-    .content {
-      background: white;
-      padding: 2rem;
-      border-radius: 12px;
-      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-    }
-
-    h1, h2, h3, h4, h5, h6 {
-      margin-top: 1.5rem;
-      margin-bottom: 0.75rem;
-      color: #0f172a;
-      font-weight: 600;
-    }
-
-    h1 {
-      font-size: 2rem;
-      border-bottom: 2px solid #e2e8f0;
-      padding-bottom: 0.5rem;
-    }
-
-    h2 {
-      font-size: 1.5rem;
-      border-bottom: 1px solid #e2e8f0;
-      padding-bottom: 0.375rem;
-    }
-
-    h3 {
-      font-size: 1.25rem;
-    }
-
-    p {
-      margin-bottom: 1rem;
-    }
-
-    ul, ol {
-      margin-bottom: 1rem;
-      padding-left: 2rem;
-    }
-
-    li {
-      margin-bottom: 0.5rem;
-    }
-
-    code {
-      background: #f1f5f9;
-      color: #c026d3;
-      padding: 0.2rem 0.4rem;
-      border-radius: 4px;
-      font-size: 0.9em;
-      font-family: 'Monaco', 'Courier New', monospace;
-    }
-
-    pre {
-      background: #1e293b;
-      color: #e2e8f0;
-      padding: 1.5rem;
-      border-radius: 8px;
-      overflow-x: auto;
-      margin: 1rem 0;
-    }
-
-    pre code {
-      background: transparent;
-      color: inherit;
-      padding: 0;
-    }
-
-    blockquote {
-      border-left: 4px solid #818cf8;
-      padding-left: 1rem;
-      margin: 1rem 0;
-      color: #64748b;
-      font-style: italic;
-    }
-
-    table {
-      width: 100%;
-      border-collapse: collapse;
-      margin: 1rem 0;
-    }
-
-    th, td {
-      border: 1px solid #e2e8f0;
-      padding: 0.75rem;
-      text-align: left;
-    }
-
-    th {
-      background: #f8fafc;
-      font-weight: 600;
-    }
-
-    a {
-      color: #818cf8;
-      text-decoration: none;
-    }
-
-    a:hover {
-      text-decoration: underline;
-    }
-
-    .footer {
-      margin-top: 3rem;
-      padding-top: 2rem;
-      border-top: 1px solid #e2e8f0;
-      text-align: center;
-      color: #94a3b8;
-      font-size: 0.875rem;
-    }
-  </style>
-</head>
-<body>
-  <div class="metadata">
-    <h3>📄 Documentation Metadata</h3>
-    <ul class="metadata-list">
-      <li><strong>Language:</strong> ${escapeHtml(metadata.language)}</li>
-      <li><strong>Generated:</strong> ${escapeHtml(metadata.generatedAt.toLocaleString())}</li>
-      ${metadata.qualityScore !== undefined ? `<li><strong>Quality Score:</strong> ${escapeHtml(metadata.qualityScore)}/100</li>` : ''}
-      ${metadata.prInfo ? `
-        <li><strong>Source:</strong> PR #${escapeHtml(metadata.prInfo.prNumber)} in ${escapeHtml(metadata.prInfo.repository)}</li>
-        <li><strong>Branch:</strong> ${escapeHtml(metadata.prInfo.branch)}</li>
-        <li><strong>Author:</strong> ${escapeHtml(metadata.prInfo.author)}</li>
-      ` : ''}
-    </ul>
-  </div>
-
-  <div class="content">
-    ${htmlContent}
-  </div>
-
-  <div class="footer">
-    Generated by CodeToDocsAI
-  </div>
-</body>
-</html>`;
+  return paperDocument(htmlContent, metadata);
 }

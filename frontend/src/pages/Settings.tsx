@@ -148,7 +148,7 @@ function Settings() {
   return (
     <div
       ref={scopeRef}
-      className="settings-page mx-auto flex w-full max-w-[900px]! flex-1 min-h-0 flex-col gap-6 p-6"
+      className="settings-page mx-auto flex w-full max-w-[900px] flex-1 min-h-0 flex-col gap-6 p-6"
     >
       <header data-boot style={{ opacity: 0 }}>
         <h1 className="font-display text-3xl tracking-tight text-ink-100">Settings</h1>

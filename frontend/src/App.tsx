@@ -11,7 +11,6 @@ import Integrations from './pages/Integrations'
 import GitHub from './pages/GitHub'
 import MobileGate from './components/MobileGate'
 import { useIsMobile } from './hooks/useIsMobile'
-import './App.css'
 
 function AppRoutes() {
   const isMobile = useIsMobile()

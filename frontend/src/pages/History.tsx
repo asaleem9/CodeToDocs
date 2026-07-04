@@ -191,7 +191,7 @@ function History() {
   return (
     <div
       ref={scopeRef}
-      className="mx-auto flex w-full max-w-[1400px]! flex-1 min-h-0 flex-col gap-5 p-6"
+      className="mx-auto flex w-full max-w-[1400px] flex-1 min-h-0 flex-col gap-5 p-6"
     >
       {/* header */}
       <header

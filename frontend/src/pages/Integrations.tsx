@@ -226,7 +226,7 @@ function Integrations() {
   return (
     <div
       ref={scopeRef}
-      className="integrations-page mx-auto flex w-full max-w-[1000px]! flex-1 min-h-0 flex-col gap-5 p-6"
+      className="integrations-page mx-auto flex w-full max-w-[1000px] flex-1 min-h-0 flex-col gap-5 p-6"
     >
       <header data-boot style={{ opacity: 0 }}>
         <h1 className="font-display text-3xl tracking-tight text-ink-100">Integrations</h1>

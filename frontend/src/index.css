@@ -1,47 +1,206 @@
-* {
-  box-sizing: border-box;
-  margin: 0;
-  padding: 0;
-}
+@import "tailwindcss";
 
-:root {
-  --bg-base: #0a0a0b;
-  --bg-surface: #111113;
-  --bg-elevated: #18181b;
-  --border-default: #27272a;
-  --border-hover: #3f3f46;
-  --text-primary: #fafafa;
-  --text-secondary: #a1a1aa;
-  --text-muted: #71717a;
-  --accent: #e0e7ff;
-  --accent-hover: #a5b4fc;
-  --accent-muted: rgba(224, 231, 255, 0.08);
-  --success: #22c55e;
-  --error: #ef4444;
-  --teal: #2dd4bf;
-  --amber: #fbbf24;
-  --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
-
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
-    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
-  line-height: 1.6;
+/* ── Departure Mono (vendored, OFL — see assets/fonts/DepartureMono-LICENSE.txt) ── */
+@font-face {
+  font-family: 'Departure Mono';
+  src: url('./assets/fonts/DepartureMono-Regular.woff2') format('woff2');
   font-weight: 400;
-
-  font-synthesis: none;
-  text-rendering: optimizeLegibility;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+  font-style: normal;
+  font-display: swap;
 }
 
-body {
-  margin: 0;
-  min-width: 320px;
-  min-height: 100vh;
-  background: var(--bg-base);
-  color: var(--text-primary);
+/* ══════════════════════════════════════════════════════════════════
+   Design tokens — "refined terminal"
+   Ink: green-cast near-blacks (a powered-on CRT, not neutral zinc)
+   Phosphor: the single brand accent
+   Paper: the printed page generated docs render on
+   ══════════════════════════════════════════════════════════════════ */
+@theme {
+  --color-*: initial;
+
+  /* ink — dark chrome */
+  --color-ink-950: #050807;
+  --color-ink-900: #0a100d;
+  --color-ink-850: #0f1613;
+  --color-ink-800: #141d19;
+  --color-ink-700: #1d2822;
+  --color-ink-600: #2e3d35;
+  --color-ink-400: #5d7268;
+  --color-ink-300: #8ca69a;
+  --color-ink-100: #e2efe9;
+
+  /* phosphor — brand accent */
+  --color-phosphor-200: #a7f3e4;
+  --color-phosphor-300: #5eead4;
+  --color-phosphor-400: #2dd4bf;
+  --color-phosphor-500: #14b8a6;
+  --color-phosphor-600: #0d9488;
+
+  /* signals — sparse semantic accents */
+  --color-amber: #ffb454;
+  --color-red: #ff6b5e;
+  --color-green: #7ee787;
+
+  /* paper — the printout */
+  --color-paper-50: #f8f4ea;
+  --color-paper-100: #f2ecdf;
+  --color-paper-200: #e7dfcc;
+  --color-paper-300: #d5c9ae;
+  --color-paper-400: #a89a76;
+
+  /* print — ink on paper */
+  --color-print-900: #1a1c19;
+  --color-print-600: #494f49;
+  --color-print-400: #767c72;
+
+  --color-white: #ffffff;
+  --color-black: #000000;
+  --color-transparent: transparent;
+  --color-current: currentColor;
+
+  --font-display: 'Departure Mono', 'JetBrains Mono Variable', monospace;
+  --font-mono: 'JetBrains Mono Variable', 'JetBrains Mono', ui-monospace, monospace;
+  --font-sans: 'IBM Plex Sans', system-ui, -apple-system, sans-serif;
+  --font-serif: 'Newsreader Variable', 'Newsreader', Georgia, serif;
+
+  --animate-caret-blink: caret-blink 1.1s steps(1) infinite;
+  --animate-crt-flicker: crt-flicker 4s steps(60) infinite;
+
+  @keyframes caret-blink {
+    0%, 55% { opacity: 1; }
+    56%, 100% { opacity: 0; }
+  }
+  @keyframes crt-flicker {
+    0%, 100% { opacity: 1; }
+    3% { opacity: 0.985; }
+    7% { opacity: 1; }
+    43% { opacity: 0.99; }
+    44% { opacity: 1; }
+    71% { opacity: 0.987; }
+    72% { opacity: 1; }
+  }
 }
 
-#root {
-  width: 100%;
-  min-height: 100vh;
+/* ── Legacy alias bridge — re-skins unconverted pages onto the new palette.
+      Every page still on hand-written CSS reads these names. Delete in M6. ── */
+:root {
+  --bg-base: var(--color-ink-950);
+  --bg-surface: var(--color-ink-900);
+  --bg-elevated: var(--color-ink-850);
+  --border-default: var(--color-ink-700);
+  --border-hover: var(--color-ink-600);
+  --text-primary: var(--color-ink-100);
+  --text-secondary: var(--color-ink-300);
+  --text-muted: var(--color-ink-400);
+  --accent: var(--color-phosphor-200);
+  --accent-hover: var(--color-phosphor-300);
+  --accent-muted: color-mix(in srgb, var(--color-phosphor-400) 9%, transparent);
+  --success: var(--color-green);
+  --error: var(--color-red);
+  --teal: var(--color-phosphor-400);
+  --amber: var(--color-amber);
+  --font-mono: 'JetBrains Mono Variable', 'JetBrains Mono', ui-monospace, monospace;
+}
+
+/* Part of the legacy bridge: preflight strips list styles/margins, but the
+   unconverted pages wrote their lists against UA defaults. Delete in M6. */
+.batch-page ol, .batch-page ul,
+.github-page ol, .github-page ul,
+.settings-page ol, .settings-page ul,
+.integrations-page ol, .integrations-page ul {
+  list-style: revert;
+  padding-left: revert;
+  margin: revert;
+}
+
+/* ── Effects ── */
+@utility glow-text {
+  text-shadow: 0 0 8px color-mix(in srgb, var(--color-phosphor-400) 45%, transparent);
+}
+@utility glow-text-strong {
+  text-shadow:
+    0 0 6px color-mix(in srgb, var(--color-phosphor-400) 55%, transparent),
+    0 0 28px color-mix(in srgb, var(--color-phosphor-400) 30%, transparent);
+}
+@utility glow-ring {
+  border-color: var(--color-phosphor-500);
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--color-phosphor-400) 35%, transparent),
+    0 0 18px color-mix(in srgb, var(--color-phosphor-400) 18%, transparent);
+}
+@utility scanlines {
+  position: relative;
+  &::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background: repeating-linear-gradient(
+      0deg,
+      transparent 0px,
+      transparent 2px,
+      rgb(0 0 0 / 0.09) 2px,
+      rgb(0 0 0 / 0.09) 3px
+    );
+  }
+}
+@utility crt-flicker {
+  @media (prefers-reduced-motion: no-preference) {
+    animation: var(--animate-crt-flicker);
+  }
+}
+
+/* ── Base ── */
+@layer base {
+  :root {
+    color-scheme: dark;
+  }
+
+  body {
+    min-width: 320px;
+    min-height: 100vh;
+    background: var(--color-ink-950);
+    color: var(--color-ink-100);
+    font-family: var(--font-sans);
+    font-size: 15px;
+    line-height: 1.6;
+    font-synthesis: none;
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  #root {
+    width: 100%;
+    min-height: 100vh;
+  }
+
+  ::selection {
+    background: color-mix(in srgb, var(--color-phosphor-400) 30%, transparent);
+    color: var(--color-ink-100);
+  }
+
+  :focus-visible {
+    outline: 1px solid var(--color-phosphor-400);
+    outline-offset: 2px;
+  }
+
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-ink-700) transparent;
+  }
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: var(--color-ink-700);
+    border-radius: 4px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: var(--color-ink-600);
+  }
 }

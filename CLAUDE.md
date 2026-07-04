@@ -91,10 +91,10 @@ keep it exactly matching the frontend origin; a trailing slash is tolerated but 
 ## Frontend layout note
 
 Pages that render a long generated document must **cap the panel's height** and let it scroll
-internally, or the whole page stretches to fit the content. The pattern: give the content
-container a viewport-based height (`height: calc(100vh - Xrem)`) and set `min-height: 0` on every
-flex/grid ancestor of the scroll area so `overflow-y: auto` actually engages. History (`History.css`)
-was the fixed reference; Batch caps its detail panel with `max-height`.
+internally, or the whole page stretches to fit the content. The pattern now lives in
+`frontend/src/pages/History.tsx` as Tailwind utilities: a viewport-height container
+(`h-[calc(100vh-24rem)]`), `min-h-0` on every flex/grid ancestor of the scroll area, and
+`overflow-y-auto` on the scrollers themselves. Batch caps its detail panel with `max-h-[800px]`.
 
 ## Known limitations (current production)
 

@@ -5,9 +5,15 @@ import remarkGfm from 'remark-gfm'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { paperTheme } from '../lib/syntaxTheme'
 import { renderMermaid } from '../lib/mermaid'
+import { useGSAP, bootSequence } from '../lib/motion'
+import { getLanguageColor } from '../lib/languages'
 import QualityScore from '../components/QualityScore'
+import Panel from '../components/ui/Panel'
+import Button from '../components/ui/Button'
+import Badge from '../components/ui/Badge'
+import EmptyState from '../components/ui/EmptyState'
+import Spinner from '../components/ui/Spinner'
 import { showErrorToast, showSuccessToast } from '../utils/errorHandler'
-import './History.css'
 
 interface QualityScoreData {
   score: number
@@ -48,6 +54,11 @@ interface StoredDoc {
   }
 }
 
+const TABS = [
+  { id: 'my-docs', label: 'MY DOCUMENTS' },
+  { id: 'public', label: 'PUBLIC GALLERY' },
+] as const
+
 function History() {
   const [docs, setDocs] = useState<StoredDoc[]>([])
   const [selectedDoc, setSelectedDoc] = useState<StoredDoc | null>(null)
@@ -55,6 +66,15 @@ function History() {
   const [isDiagramCollapsed, setIsDiagramCollapsed] = useState<boolean>(false)
   const [activeTab, setActiveTab] = useState<'my-docs' | 'public'>('my-docs')
   const diagramRef = useRef<HTMLDivElement>(null)
+  const scopeRef = useRef<HTMLDivElement>(null)
+
+  // page boot-in
+  useGSAP(
+    () => {
+      if (scopeRef.current) bootSequence(scopeRef.current)
+    },
+    { scope: scopeRef }
+  )
 
   useEffect(() => {
     fetchHistory()
@@ -158,259 +178,246 @@ function History() {
     })
   }
 
-  const getLanguageColor = (language: string) => {
-    const colors: Record<string, string> = {
-      javascript: '#f7df1e',
-      typescript: '#3178c6',
-      python: '#3776ab',
-      java: '#007396',
-      jsx: '#61dafb',
-      tsx: '#3178c6'
+  const docTitle = (doc: StoredDoc) => {
+    if (doc.type === 'batch' && doc.batchInfo) {
+      return doc.batchInfo.repoUrl.split('/').slice(-2).join('/')
     }
-    return colors[language.toLowerCase()] || '#94a3b8'
+    if (doc.prInfo) {
+      return `PR #${doc.prInfo.prNumber} · ${doc.prInfo.repository.split('/')[1]}`
+    }
+    return `${doc.language} · manual`
   }
 
   return (
-    <div className="history-page">
-      <div className="history-container">
-        <header className="history-header">
-          <div>
-            <h1>History</h1>
-            <p className="history-subtitle">Recent documentation generations</p>
-          </div>
-          {!isLoading && docs.length > 0 && (
-            <div className="history-stats">
-              <div className="stat-item">
-                <span className="stat-value">{docs.length}</span>
-                <span className="stat-label">{activeTab === 'public' ? 'Public Docs' : 'Documents'}</span>
-              </div>
-            </div>
-          )}
-        </header>
-
-        {/* Tabs for switching between My Docs and Public Gallery */}
-        <div className="history-tabs">
-          <button
-            className={`tab-button ${activeTab === 'my-docs' ? 'active' : ''}`}
-            onClick={() => setActiveTab('my-docs')}
-          >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2" />
-              <circle cx="12" cy="7" r="4" />
-            </svg>
-            My Documents
-          </button>
-          <button
-            className={`tab-button ${activeTab === 'public' ? 'active' : ''}`}
-            onClick={() => setActiveTab('public')}
-          >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9" />
-            </svg>
-            Public Gallery
-          </button>
+    <div
+      ref={scopeRef}
+      className="mx-auto flex w-full max-w-[1400px]! flex-1 min-h-0 flex-col gap-5 p-6"
+    >
+      {/* header */}
+      <header
+        data-boot
+        className="flex flex-wrap items-end justify-between gap-4"
+        style={{ opacity: 0 }}
+      >
+        <div>
+          <h1 className="font-display text-3xl text-ink-100">History</h1>
+          <p className="mt-1 font-sans text-sm text-ink-400">Recent documentation generations</p>
         </div>
+        {!isLoading && docs.length > 0 && (
+          <span className="font-mono text-[13px] text-ink-300">
+            {docs.length} {activeTab === 'public' ? 'public documents' : 'documents'}
+          </span>
+        )}
+      </header>
 
-        <div className="history-content">
-          {/* Sidebar List */}
-          <aside className="history-sidebar">
-            {isLoading ? (
-              <div className="loading-state">
-                <div className="spinner-large"></div>
-                <p>Loading history...</p>
-              </div>
-            ) : docs.length === 0 ? (
-              <div className="empty-history">
-                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-                  <path d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-                <p>{activeTab === 'public' ? 'No public documents yet' : 'No documentation history yet'}</p>
-                <span>{activeTab === 'public' ? 'Public documents will appear here' : 'Generated documentation will appear here'}</span>
-              </div>
-            ) : (
-              <div className="doc-list">
-                {docs.map((doc) => (
-                  <div
-                    key={doc.id}
-                    className={`doc-item ${selectedDoc?.id === doc.id ? 'active' : ''}`}
-                    onClick={() => handleSelectDoc(doc)}
-                  >
-                    <div className="doc-item-header">
-                      <span
-                        className="language-tag"
-                        style={{ backgroundColor: getLanguageColor(doc.language) }}
+      {/* bracket tabs */}
+      <div data-boot className="flex gap-2 border-b border-ink-700" style={{ opacity: 0 }}>
+        {TABS.map((tab) => (
+          <button
+            key={tab.id}
+            onClick={() => setActiveTab(tab.id)}
+            className={`-mb-px cursor-pointer border-b-2 px-3 py-2 font-display text-[12px] tracking-[0.12em] transition-colors ${
+              activeTab === tab.id
+                ? 'border-phosphor-400 text-phosphor-300'
+                : 'border-transparent text-ink-400 hover:text-ink-300'
+            }`}
+          >
+            [ {tab.label} ]
+          </button>
+        ))}
+      </div>
+
+      {/* sidebar list + detail pane — the grid owns the viewport height so
+          both columns scroll internally and the page never grows */}
+      <div
+        data-boot
+        className="grid min-h-0 grid-cols-1 gap-5 lg:h-[calc(100vh-24rem)] lg:min-h-[460px] lg:grid-cols-[380px_1fr]"
+        style={{ opacity: 0 }}
+      >
+        <Panel
+          title={activeTab === 'public' ? 'GALLERY' : 'DOCUMENTS'}
+          className="min-h-0 min-w-0 max-lg:max-h-[400px]"
+        >
+          {isLoading ? (
+            <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 p-8">
+              <Spinner className="text-lg text-phosphor-400" />
+              <p className="font-mono text-[13px] text-ink-400">loading history…</p>
+            </div>
+          ) : docs.length === 0 ? (
+            <EmptyState
+              glyph="░▒▓"
+              title={activeTab === 'public' ? 'no public documents yet' : 'no history yet'}
+              hint={
+                activeTab === 'public'
+                  ? 'Public documents will appear here.'
+                  : 'Generated documentation will appear here.'
+              }
+            />
+          ) : (
+            <div className="min-h-0 flex-1 overflow-y-auto">
+              {docs.map((doc) => (
+                <div
+                  key={doc.id}
+                  onClick={() => handleSelectDoc(doc)}
+                  className={`group relative cursor-pointer border-b border-l-2 border-b-ink-700/60 px-4 py-3 transition-colors ${
+                    selectedDoc?.id === doc.id
+                      ? 'border-l-phosphor-400 bg-phosphor-400/5'
+                      : 'border-l-transparent hover:bg-ink-850'
+                  }`}
+                >
+                  <div className="flex items-center gap-2.5">
+                    <span
+                      aria-hidden
+                      className="shrink-0 font-mono text-[10px] leading-none select-none"
+                      style={{ color: getLanguageColor(doc.language) }}
+                    >
+                      ●
+                    </span>
+                    <span className="min-w-0 flex-1 truncate font-mono text-[13px] text-ink-100">
+                      {docTitle(doc)}
+                    </span>
+                    <span className="shrink-0 font-mono text-[11px] text-ink-400">
+                      {formatDate(doc.createdAt)}
+                    </span>
+                  </div>
+
+                  {doc.type === 'batch' && doc.batchInfo ? (
+                    <div className="mt-1 pl-[22px]">
+                      <Badge tone="amber">
+                        batch {doc.batchInfo.successCount}/{doc.batchInfo.totalFiles} files
+                      </Badge>
+                    </div>
+                  ) : doc.prInfo ? (
+                    <div className="mt-1 pl-[22px]">
+                      <Badge tone="phosphor">pr #{doc.prInfo.prNumber}</Badge>
+                    </div>
+                  ) : null}
+
+                  {activeTab === 'my-docs' && (
+                    <div className="absolute top-1/2 right-3 flex -translate-y-1/2 items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+                      <button
+                        onClick={(e) => handleToggleVisibility(doc.id, doc.isPublic, e)}
+                        title={
+                          doc.isPublic
+                            ? 'Public — click to make private'
+                            : 'Private — click to make public'
+                        }
+                        className="cursor-pointer rounded-[2px] border border-ink-700 bg-ink-900 px-1.5 py-0.5 font-mono text-[11px] text-ink-300 transition-colors hover:border-ink-600 hover:text-ink-100"
                       >
-                        {doc.language}
-                      </span>
-                      <span className="doc-time">{formatDate(doc.createdAt)}</span>
-                    </div>
-
-                    <div className="doc-item-content">
-                      {doc.type === 'batch' && doc.batchInfo ? (
-                        <div className="doc-source">
-                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                            <path d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
-                          </svg>
-                          <span className="batch-label">
-                            Batch: {doc.batchInfo.successCount}/{doc.batchInfo.totalFiles} files
-                          </span>
-                        </div>
-                      ) : doc.prInfo ? (
-                        <div className="doc-source">
-                          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-                            <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z" />
-                          </svg>
-                          <span className="pr-info">
-                            PR #{doc.prInfo.prNumber} • {doc.prInfo.repository.split('/')[1]}
-                          </span>
-                        </div>
-                      ) : (
-                        <div className="doc-source">
-                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                            <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2" />
-                            <circle cx="9" cy="7" r="4" />
-                            <path d="M23 21v-2a4 4 0 00-3-3.87m-4-12a4 4 0 010 7.75" />
-                          </svg>
-                          <span className="manual-label">Manual Generation</span>
-                        </div>
-                      )}
-                    </div>
-
-                    {activeTab === 'my-docs' && (
-                      <div className="doc-item-actions">
-                        <button
-                          className="visibility-btn"
-                          onClick={(e) => handleToggleVisibility(doc.id, doc.isPublic, e)}
-                          title={doc.isPublic ? 'Public — click to make private' : 'Private — click to make public'}
-                        >
-                          {doc.isPublic ? (
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                              <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
-                              <circle cx="12" cy="12" r="3" />
-                            </svg>
-                          ) : (
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                              <path d="M17.94 17.94A10.07 10.07 0 0112 20c-7 0-11-8-11-8a18.45 18.45 0 015.06-5.94M9.9 4.24A9.12 9.12 0 0112 4c7 0 11 8 11 8a18.5 18.5 0 01-2.16 3.19m-6.72-1.07a3 3 0 11-4.24-4.24" />
-                              <line x1="1" y1="1" x2="23" y2="23" />
-                            </svg>
-                          )}
-                        </button>
-                        <button
-                          className="delete-btn"
-                          onClick={(e) => handleDelete(doc.id, e)}
-                          title="Delete"
-                        >
-                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                            <path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2" />
-                          </svg>
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            )}
-          </aside>
-
-          {/* Detail View */}
-          <main className="history-detail">
-            {selectedDoc ? (
-              <>
-                <div className="detail-header">
-                  <div className="detail-title">
-                    <h2>
-                      {selectedDoc.type === 'batch' ? 'Full Repository Documentation' : 'Generated Documentation'}
-                    </h2>
-                    {selectedDoc.type === 'batch' && selectedDoc.batchInfo && (
-                      <div className="batch-badge">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                          <path d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
-                        </svg>
-                        {selectedDoc.batchInfo.repoUrl.split('/').slice(-2).join('/')} • {selectedDoc.batchInfo.successCount}/{selectedDoc.batchInfo.totalFiles} files
-                      </div>
-                    )}
-                    {selectedDoc.prInfo && (
-                      <div className="pr-badge">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-                          <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z" />
-                        </svg>
-                        PR #{selectedDoc.prInfo.prNumber} • {selectedDoc.prInfo.repository}
-                      </div>
-                    )}
-                  </div>
-                  <button className="copy-doc-btn" onClick={handleCopyDocumentation}>
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
-                      <path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" />
-                    </svg>
-                    Copy
-                  </button>
-                </div>
-
-                <div className="documentation-display">
-                  <ReactMarkdown
-                      remarkPlugins={[remarkGfm]}
-                    components={{
-                      code({ node, inline, className, children, ...props }: any) {
-                        const match = /language-(\w+)/.exec(className || '')
-                        return !inline && match ? (
-                          <SyntaxHighlighter
-                            style={paperTheme}
-                            language={match[1]}
-                            PreTag="div"
-                            {...props}
-                          >
-                            {String(children).replace(/\n$/, '')}
-                          </SyntaxHighlighter>
-                        ) : (
-                          <code className={className} {...props}>
-                            {children}
-                          </code>
-                        )
-                      }
-                    }}
-                  >
-                    {selectedDoc.documentation}
-                  </ReactMarkdown>
-
-                  {selectedDoc.qualityScore && <QualityScore qualityScore={selectedDoc.qualityScore} />}
-
-                  {selectedDoc.diagram && (
-                    <div className="diagram-section">
-                      <div className="diagram-header" onClick={() => setIsDiagramCollapsed(!isDiagramCollapsed)}>
-                        <h3>Visual Diagram</h3>
-                        <button className="collapse-btn">
-                          <svg
-                            width="20"
-                            height="20"
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            strokeWidth="2"
-                            style={{ transform: isDiagramCollapsed ? 'rotate(-90deg)' : 'rotate(0deg)', transition: 'transform 0.2s' }}
-                          >
-                            <polyline points="6 9 12 15 18 9" />
-                          </svg>
-                        </button>
-                      </div>
-                      {!isDiagramCollapsed && (
-                        <div className="diagram-container" ref={diagramRef}></div>
-                      )}
+                        {doc.isPublic ? 'pub' : 'prv'}
+                      </button>
+                      <button
+                        onClick={(e) => handleDelete(doc.id, e)}
+                        title="Delete"
+                        className="cursor-pointer rounded-[2px] border border-red/20 bg-ink-900 px-1.5 py-0.5 font-mono text-[11px] text-red transition-colors hover:border-red/50 hover:bg-red/10"
+                      >
+                        del
+                      </button>
                     </div>
                   )}
                 </div>
-              </>
-            ) : (
-              <div className="empty-detail">
-                <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-                  <path d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                </svg>
-                <p>Select a document to view</p>
-                <span>Click on any item from the list to view its documentation</span>
+              ))}
+            </div>
+          )}
+        </Panel>
+
+        <Panel
+          title="DETAIL"
+          active={!!selectedDoc}
+          className="min-h-0 min-w-0"
+          actions={
+            selectedDoc ? (
+              <Button size="sm" variant="ghost" onClick={handleCopyDocumentation}>
+                copy
+              </Button>
+            ) : undefined
+          }
+        >
+          {selectedDoc ? (
+            <div className="min-h-0 flex-1 overflow-y-auto">
+              <div className="flex min-h-full flex-col gap-4 p-4">
+                <div className="flex flex-wrap items-center gap-3">
+                  <h2 className="font-display text-base text-ink-100">
+                    {selectedDoc.type === 'batch'
+                      ? 'Full Repository Documentation'
+                      : 'Generated Documentation'}
+                  </h2>
+                  {selectedDoc.type === 'batch' && selectedDoc.batchInfo && (
+                    <span className="flex items-center gap-2">
+                      <Badge tone="amber">
+                        batch {selectedDoc.batchInfo.successCount}/{selectedDoc.batchInfo.totalFiles}
+                      </Badge>
+                      <span className="font-mono text-[12px] text-ink-400">
+                        {selectedDoc.batchInfo.repoUrl.split('/').slice(-2).join('/')}
+                      </span>
+                    </span>
+                  )}
+                  {selectedDoc.prInfo && (
+                    <span className="flex items-center gap-2">
+                      <Badge tone="phosphor">pr #{selectedDoc.prInfo.prNumber}</Badge>
+                      <span className="font-mono text-[12px] text-ink-400">
+                        {selectedDoc.prInfo.repository}
+                      </span>
+                    </span>
+                  )}
+                </div>
+
+                {/* the printout */}
+                <div className="border border-paper-300 shadow-[0_14px_40px_rgba(0,0,0,0.5)]">
+                  <div className="markdown-content">
+                    <ReactMarkdown
+                      remarkPlugins={[remarkGfm]}
+                      components={{
+                        code({ node, inline, className, children, ...props }: any) {
+                          const match = /language-(\w+)/.exec(className || '')
+                          return !inline && match ? (
+                            <SyntaxHighlighter
+                              style={paperTheme}
+                              language={match[1]}
+                              PreTag="div"
+                              {...props}
+                            >
+                              {String(children).replace(/\n$/, '')}
+                            </SyntaxHighlighter>
+                          ) : (
+                            <code className={className} {...props}>
+                              {children}
+                            </code>
+                          )
+                        }
+                      }}
+                    >
+                      {selectedDoc.documentation}
+                    </ReactMarkdown>
+
+                    {selectedDoc.diagram && (
+                      <div className="border-t border-paper-300 px-2 pt-4 pb-2">
+                        <button
+                          className="flex w-full cursor-pointer items-center justify-between font-mono text-[11px] tracking-[0.14em] text-print-400 uppercase"
+                          onClick={() => setIsDiagramCollapsed(!isDiagramCollapsed)}
+                        >
+                          <span>figure 1 — flow diagram</span>
+                          <span aria-hidden>{isDiagramCollapsed ? '▸' : '▾'}</span>
+                        </button>
+                        {!isDiagramCollapsed && (
+                          <div ref={diagramRef} className="mt-3 flex justify-center overflow-x-auto" />
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {selectedDoc.qualityScore && <QualityScore qualityScore={selectedDoc.qualityScore} />}
               </div>
-            )}
-          </main>
-        </div>
+            </div>
+          ) : (
+            <EmptyState
+              glyph="¶"
+              title="select a document"
+              hint="Pick any item from the list to view its documentation."
+            />
+          )}
+        </Panel>
       </div>
     </div>
   )

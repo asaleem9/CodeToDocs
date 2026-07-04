@@ -39,3 +39,10 @@ lerna-debug.log*
 # Misc
 .cache/
 .temp/
+
+# Local tooling & session artifacts
+.claude/
+.playwright-mcp/
+
+# Video productions (HyperFrames projects with their own node_modules/renders)
+videos/

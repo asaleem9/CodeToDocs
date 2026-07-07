@@ -46,3 +46,4 @@ lerna-debug.log*
 
 # Video productions (HyperFrames projects with their own node_modules/renders)
 videos/
+.superpowers/

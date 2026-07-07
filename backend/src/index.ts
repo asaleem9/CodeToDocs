@@ -1,4 +1,4 @@
-import express, { Express, Request, Response } from 'express';
+import express, { Express, Request, Response, NextFunction } from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import session from 'express-session';
@@ -73,7 +73,16 @@ app.use(
 
 // Body parser - use raw body for webhook routes to verify signature
 app.use('/api/webhook', express.raw({ type: 'application/json' }));
-app.use(express.json());
+app.use(express.json({ limit: '512kb' }));
+
+// body-parser's default response for an oversized body is an HTML error page,
+// which the frontend can't parse as JSON - convert it before it reaches any route.
+app.use((err: any, req: Request, res: Response, next: NextFunction) => {
+  if (err?.type === 'entity.too.large') {
+    return res.status(413).json({ error: 'Request body too large', code: 'payload_too_large' });
+  }
+  next(err);
+});
 
 // Health check endpoint
 app.get('/api/health', (req: Request, res: Response) => {

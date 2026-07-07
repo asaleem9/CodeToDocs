@@ -1,5 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
-import { getUserId } from './auth';
+import { getStorageUserId } from './auth';
 
 interface RateLimitOptions {
   windowMs: number; // window size in milliseconds
@@ -13,8 +13,10 @@ interface Bucket {
 }
 
 /**
- * Minimal in-memory fixed-window rate limiter. Keyed by authenticated user id
- * when available, otherwise by client IP. Intended to protect expensive
+ * Minimal in-memory fixed-window rate limiter. Keyed by the same stable
+ * identity used for document storage - an authenticated user's id, or an
+ * anonymous bearer/session id - and falls back to client IP only when that
+ * resolves to 0 (no identity at all). Intended to protect expensive
  * endpoints (LLM calls) from abuse. For a multi-instance deployment this should
  * be backed by a shared store, but it meaningfully raises the bar as-is.
  */
@@ -33,7 +35,8 @@ export function rateLimit(options: RateLimitOptions) {
   if (typeof sweep.unref === 'function') sweep.unref();
 
   return (req: Request, res: Response, next: NextFunction) => {
-    const identity = getUserId(req) ?? req.ip ?? 'unknown';
+    const storageId = getStorageUserId(req);
+    const identity = storageId !== 0 ? storageId : (req.ip ?? 'unknown');
     const key = `${keyPrefix}:${identity}`;
     const now = Date.now();
 

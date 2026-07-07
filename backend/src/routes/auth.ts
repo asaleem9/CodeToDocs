@@ -4,8 +4,13 @@ import { exchangeCodeForToken, getGitHubUser, getUserRepositories } from '../ser
 import { tokenStorage } from '../services/tokenStorage';
 import { signToken, signAnonToken, verifyAnonToken } from '../utils/appToken';
 import { getAuthUser, getUserId } from '../middleware/auth';
+import { rateLimit } from '../middleware/rateLimit';
 
 const router = express.Router();
+
+// Covers the OAuth redirect dance along with everything else on this router -
+// 60 requests per 15 minutes is generous for normal login/logout traffic.
+router.use(rateLimit({ windowMs: 15 * 60 * 1000, max: 60, keyPrefix: 'auth' }));
 
 /**
  * GET /api/auth/github

@@ -77,8 +77,6 @@ if (typeof jobSweep.unref === 'function') jobSweep.unref();
 router.post('/generate', generateLimiter, async (req: Request, res: Response) => {
   try {
     const { code, language } = req.body as GenerateRequest;
-    const userId = getStorageUserId(req);
-    const model = await settingsService.getClaudeModel(userId);
 
     // Validate request body
     if (!code || typeof code !== 'string') {
@@ -88,12 +86,23 @@ router.post('/generate', generateLimiter, async (req: Request, res: Response) =>
       } as ErrorResponse);
     }
 
+    // Reject oversized submissions up front, before we touch settings or the LLM.
+    if (code.length > 100_000) {
+      return res.status(413).json({
+        error: 'Code is too large to process. Please limit submissions to 100,000 characters.',
+        code: 'code_too_large',
+      });
+    }
+
     if (!language || typeof language !== 'string') {
       return res.status(400).json({
         error: 'Language is required and must be a string',
         timestamp: new Date(),
       } as ErrorResponse);
     }
+
+    const userId = getStorageUserId(req);
+    const model = await settingsService.getClaudeModel(userId);
 
     // Generate an unguessable job ID
     const jobId = `job-${crypto.randomBytes(12).toString('hex')}`;

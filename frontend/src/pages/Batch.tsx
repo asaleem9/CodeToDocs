@@ -1,14 +1,9 @@
 import { useState, useEffect, useRef } from 'react'
 import { useLocation } from 'react-router-dom'
 import axios from 'axios'
-import ReactMarkdown from 'react-markdown'
-import remarkGfm from 'remark-gfm'
-import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
-import { paperTheme } from '../lib/syntaxTheme'
-import { renderMermaid } from '../lib/mermaid'
 import { useGSAP, bootSequence } from '../lib/motion'
 import { useBatch } from '../contexts/BatchContext'
-import QualityScore from '../components/QualityScore'
+import DocumentSheet from '../components/DocumentSheet'
 import Panel from '../components/ui/Panel'
 import Button from '../components/ui/Button'
 import Badge from '../components/ui/Badge'
@@ -17,7 +12,7 @@ import ProgressBar from '../components/ui/ProgressBar'
 import SectionHeader from '../components/ui/SectionHeader'
 import { showErrorToast, showSuccessToast, showLoadingToast, dismissToast } from '../utils/errorHandler'
 import { downloadAsHTML, downloadAsPDF } from '../utils/exportUtils'
-
+import type { QualityScoreData } from '../types'
 
 interface BatchProgress {
   total: number
@@ -32,7 +27,7 @@ interface DocumentedFile {
   language: string
   documentation: string
   diagram?: string
-  qualityScore?: any
+  qualityScore?: QualityScoreData
   success: boolean
   error?: string
 }
@@ -69,22 +64,6 @@ const FEATURES = [
   { title: 'DOWNLOAD ALL', body: 'Export complete documentation as Markdown' },
 ]
 
-// Shared ReactMarkdown code renderer — syntax highlighting on the paper sheet.
-const markdownComponents = {
-  code({ node, inline, className, children, ...props }: any) {
-    const match = /language-(\w+)/.exec(className || '')
-    return !inline && match ? (
-      <SyntaxHighlighter style={paperTheme} language={match[1]} PreTag="div" {...props}>
-        {String(children).replace(/\n$/, '')}
-      </SyntaxHighlighter>
-    ) : (
-      <code className={className} {...props}>
-        {children}
-      </code>
-    )
-  },
-}
-
 function Batch() {
   const location = useLocation()
   const batchContext = useBatch()
@@ -98,10 +77,8 @@ function Batch() {
   const [localBatchId, setLocalBatchId] = useState<string>('')
   const [localIsProcessing, setLocalIsProcessing] = useState<boolean>(false)
   const [incrementalDocs, setIncrementalDocs] = useState<DocumentedFile[]>([])
-  const [isDiagramCollapsed, setIsDiagramCollapsed] = useState<boolean>(false)
   const progressInterval = useRef<ReturnType<typeof setInterval> | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
-  const diagramRef = useRef<HTMLDivElement>(null)
   const docsFetchedRef = useRef<number>(0)
   const logRef = useRef<HTMLDivElement>(null)
   const scopeRef = useRef<HTMLDivElement>(null)
@@ -203,14 +180,6 @@ function Batch() {
       fetchResult()
     }
   }, [batchId, isProcessing, result])
-
-  // Render mermaid diagram when selected doc changes
-  useEffect(() => {
-    const diagram = selectedDoc?.diagram
-    if (diagram && diagramRef.current) {
-      renderMermaid(diagramRef.current, diagram)
-    }
-  }, [selectedDoc])
 
   // Keep the live file log pinned to the newest entry
   useEffect(() => {
@@ -742,41 +711,11 @@ function Batch() {
                     </div>
 
                     {selectedDoc.success ? (
-                      <>
-                        {/* the printout */}
-                        <div className="border border-paper-300 shadow-[0_14px_40px_rgba(0,0,0,0.5)]">
-                          <div className="markdown-content">
-                            <ReactMarkdown
-                              remarkPlugins={[remarkGfm]}
-                              components={markdownComponents}
-                            >
-                              {selectedDoc.documentation}
-                            </ReactMarkdown>
-
-                            {selectedDoc.diagram && (
-                              <div className="border-t border-paper-300 px-2 pt-4 pb-2">
-                                <button
-                                  className="flex w-full cursor-pointer items-center justify-between font-mono text-[11px] tracking-[0.14em] text-print-400 uppercase"
-                                  onClick={() => setIsDiagramCollapsed(!isDiagramCollapsed)}
-                                >
-                                  <span>figure 1 — flow diagram</span>
-                                  <span aria-hidden>{isDiagramCollapsed ? '▸' : '▾'}</span>
-                                </button>
-                                {!isDiagramCollapsed && (
-                                  <div
-                                    ref={diagramRef}
-                                    className="mt-3 flex justify-center overflow-x-auto"
-                                  />
-                                )}
-                              </div>
-                            )}
-                          </div>
-                        </div>
-
-                        {selectedDoc.qualityScore && (
-                          <QualityScore qualityScore={selectedDoc.qualityScore} />
-                        )}
-                      </>
+                      <DocumentSheet
+                        documentation={selectedDoc.documentation}
+                        diagram={selectedDoc.diagram}
+                        qualityScore={selectedDoc.qualityScore}
+                      />
                     ) : (
                       <div className="border border-red/25 bg-red/10 p-4">
                         <p className="font-mono text-[13px] text-red">
@@ -797,14 +736,7 @@ function Batch() {
                       <Badge tone="phosphor">complete overview</Badge>
                     </div>
 
-                    {/* the printout */}
-                    <div className="border border-paper-300 shadow-[0_14px_40px_rgba(0,0,0,0.5)]">
-                      <div className="markdown-content">
-                        <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
-                          {result.fullRepoDocumentation}
-                        </ReactMarkdown>
-                      </div>
-                    </div>
+                    <DocumentSheet documentation={result.fullRepoDocumentation} />
                   </div>
                 ) : (
                   <EmptyState

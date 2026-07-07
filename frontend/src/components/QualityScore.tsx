@@ -1,21 +1,6 @@
 import { useEffect, useRef } from 'react'
 import { countUp } from '../lib/motion'
-
-interface QualityScoreBreakdown {
-  hasOverview: boolean
-  hasParameters: boolean
-  hasReturnValues: boolean
-  hasExamples: boolean
-  hasUsage: boolean
-  hasDependencies: boolean
-  hasNotes: boolean
-  codeBlocksCount: number
-}
-
-interface QualityScoreData {
-  score: number
-  breakdown: QualityScoreBreakdown
-}
+import type { QualityScoreData } from '../types'
 
 interface QualityScoreProps {
   qualityScore: QualityScoreData

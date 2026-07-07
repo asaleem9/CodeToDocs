@@ -148,6 +148,129 @@ export class SettingsServiceDb {
   async updateClaudeModel(githubUsername: string, model: string): Promise<void> {
     await this.updateSettings(githubUsername, { model });
   }
+
+  /**
+   * Get settings for a user, looked up by their GitHub id
+   */
+  async getSettingsByGithubId(githubId: number): Promise<ClaudeSettings> {
+    if (!db) {
+      // Return defaults if database not available
+      return {
+        model: 'claude-haiku-4-5-20251001',
+        additionalSettings: {},
+      };
+    }
+
+    try {
+      const user = await db.query.users.findFirst({
+        where: eq(users.githubId, githubId),
+      });
+
+      if (!user) {
+        // Return defaults for unknown user
+        return {
+          model: 'claude-haiku-4-5-20251001',
+          additionalSettings: {},
+        };
+      }
+
+      const settings = await db.query.userSettings.findFirst({
+        where: eq(userSettings.userId, user.id),
+      });
+
+      if (!settings) {
+        // Create default settings
+        const [newSettings] = await db.insert(userSettings).values({
+          userId: user.id,
+          claudeModel: 'claude-haiku-4-5-20251001',
+          additionalSettings: {},
+        }).returning();
+
+        return {
+          model: newSettings.claudeModel || 'claude-haiku-4-5-20251001',
+          additionalSettings: (newSettings.additionalSettings as any) || {},
+        };
+      }
+
+      return {
+        model: settings.claudeModel || 'claude-haiku-4-5-20251001',
+        additionalSettings: (settings.additionalSettings as any) || {},
+      };
+    } catch (error) {
+      console.error('Error getting settings by GitHub id:', error);
+      // Return defaults on error
+      return {
+        model: 'claude-haiku-4-5-20251001',
+        additionalSettings: {},
+      };
+    }
+  }
+
+  /**
+   * Update settings for a user, looked up by their GitHub id
+   */
+  async updateSettingsByGithubId(githubId: number, newSettings: Partial<ClaudeSettings>): Promise<void> {
+    if (!db) {
+      console.warn('Database not available, settings not persisted');
+      return;
+    }
+
+    try {
+      const user = await db.query.users.findFirst({
+        where: eq(users.githubId, githubId),
+      });
+
+      if (!user) {
+        throw new Error(`User not found for GitHub id: ${githubId}`);
+      }
+
+      const existingSettings = await db.query.userSettings.findFirst({
+        where: eq(userSettings.userId, user.id),
+      });
+
+      if (existingSettings) {
+        // Update existing settings
+        await db.update(userSettings)
+          .set({
+            claudeModel: newSettings.model || existingSettings.claudeModel,
+            additionalSettings: newSettings.additionalSettings !== undefined
+              ? newSettings.additionalSettings as any
+              : existingSettings.additionalSettings,
+            updatedAt: new Date(),
+          })
+          .where(eq(userSettings.userId, user.id));
+
+        console.log(`✓ Settings updated for GitHub id: ${githubId}`);
+      } else {
+        // Create new settings
+        await db.insert(userSettings).values({
+          userId: user.id,
+          claudeModel: newSettings.model || 'claude-haiku-4-5-20251001',
+          additionalSettings: (newSettings.additionalSettings || {}) as any,
+        });
+
+        console.log(`✓ Settings created for GitHub id: ${githubId}`);
+      }
+    } catch (error) {
+      console.error('Error updating settings by GitHub id:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get Claude model for a user by GitHub id (convenience method)
+   */
+  async getClaudeModelByGithubId(githubId: number): Promise<string> {
+    const settings = await this.getSettingsByGithubId(githubId);
+    return settings.model;
+  }
+
+  /**
+   * Update Claude model for a user by GitHub id (convenience method)
+   */
+  async updateClaudeModelByGithubId(githubId: number, model: string): Promise<void> {
+    await this.updateSettingsByGithubId(githubId, { model });
+  }
 }
 
 // Export singleton instance

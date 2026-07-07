@@ -1,7 +1,7 @@
 import { getAnthropicClient, classifyLlmError, LlmErrorKind } from './llmClient';
 import { calculateQualityScore, QualityScore } from './qualityScoreService';
 import { parseGraphQLSchema, generateGraphQLDiagram, generateExampleQueries } from '../utils/graphqlParser';
-import { settingsService } from './settingsService';
+import { DEFAULT_MODEL } from './settingsService';
 import {
   calculateQueryComplexity,
   detectN1Problems,
@@ -26,11 +26,13 @@ export interface DocumentationResult {
  * Generates developer documentation for the provided code using Claude AI
  * @param code - The source code to document
  * @param language - The programming language of the code
+ * @param options.model - Claude model to use; falls back to DEFAULT_MODEL when omitted
  * @returns Promise<DocumentationResult> - The generated documentation and status
  */
 export async function generateDocumentation(
   code: string,
-  language: string
+  language: string,
+  options?: { model?: string }
 ): Promise<DocumentationResult> {
   try {
     // Validate API key
@@ -96,8 +98,7 @@ Return ONLY the Mermaid diagram code without any explanation or markdown code bl
 
     const anthropic = getAnthropicClient();
 
-    // Get selected model from settings
-    const selectedModel = settingsService.getClaudeModel();
+    const selectedModel = options?.model || DEFAULT_MODEL;
     console.log(`Using Claude model: ${selectedModel}`);
 
     // Generate documentation and diagram in parallel

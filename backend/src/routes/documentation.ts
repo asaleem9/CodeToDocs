@@ -3,6 +3,7 @@ import crypto from 'crypto';
 import { generateDocumentation } from '../services/llmService';
 import { classifyLlmError, LlmErrorKind } from '../services/llmClient';
 import { documentationStorage } from '../services/storageService';
+import { settingsService } from '../services/settingsService';
 import { QualityScore } from '../services/qualityScoreService';
 import { getStorageUserId, canAccessDocument } from '../middleware/auth';
 import { rateLimit } from '../middleware/rateLimit';
@@ -77,6 +78,7 @@ router.post('/generate', generateLimiter, async (req: Request, res: Response) =>
   try {
     const { code, language } = req.body as GenerateRequest;
     const userId = getStorageUserId(req);
+    const model = await settingsService.getClaudeModel(userId);
 
     // Validate request body
     if (!code || typeof code !== 'string') {
@@ -128,7 +130,7 @@ router.post('/generate', generateLimiter, async (req: Request, res: Response) =>
         };
 
         // Call the LLM service
-        const result = await generateDocumentation(code, language);
+        const result = await generateDocumentation(code, language, { model });
 
         // Handle service errors
         if (!result.success) {

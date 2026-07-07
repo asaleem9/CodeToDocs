@@ -3,6 +3,7 @@ import crypto from 'crypto';
 import { generateDocumentation } from '../services/llmService';
 import { documentationStorage } from '../services/storageService';
 import { tokenStorage } from '../services/tokenStorage';
+import { settingsService } from '../services/settingsService';
 
 const router = Router();
 
@@ -489,6 +490,10 @@ async function processPRFiles(prData: PRData): Promise<void> {
 
     console.log(`Using userId ${userId} for storing documentation`);
 
+    // Resolve the model preference of the user docs are attributed to (defaults
+    // to DEFAULT_MODEL for the userId 0 fallback, which has no settings).
+    const model = await settingsService.getClaudeModel(userId);
+
     // Fetch PR files
     console.log(`Fetching files for PR #${prData.prNumber}...`);
     const files = await fetchPRFiles(owner, repo, prData.prNumber, token);
@@ -531,7 +536,7 @@ async function processPRFiles(prData: PRData): Promise<void> {
       const language = detectLanguage(file.filename);
 
       // Generate documentation
-      const result = await generateDocumentation(content, language);
+      const result = await generateDocumentation(content, language, { model });
 
       if (result.success) {
         // Store documentation with PR info using repository owner's GitHub user ID

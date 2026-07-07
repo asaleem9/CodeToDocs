@@ -7,6 +7,7 @@ import * as fs from 'fs/promises';
 import { processRepository, BatchProgress, generateFullRepoDocumentation, scanCodeFiles, processBatch, generateTableOfContents, generateBatchSummary } from '../utils/batchProcessor';
 import { classifyLlmError, LlmErrorKind } from '../services/llmClient';
 import { documentationStorage } from '../services/storageService';
+import { settingsService } from '../services/settingsService';
 import { getStorageUserId, getUserId } from '../middleware/auth';
 import { tokenStorage } from '../services/tokenStorage';
 import { rateLimit } from '../middleware/rateLimit';
@@ -98,6 +99,7 @@ router.post('/start', batchLimiter, async (req: Request, res: Response) => {
   try {
     const { repoUrl, options } = req.body;
     const userId = getStorageUserId(req);
+    const model = await settingsService.getClaudeModel(userId);
 
     // If the caller is signed in, use their GitHub token for the repo fetch so
     // it isn't rate-limited (60/hr unauthenticated) and can read private repos.
@@ -157,7 +159,8 @@ router.post('/start', batchLimiter, async (req: Request, res: Response) => {
           batch.completedDocuments.push(doc);
         }
       },
-      userToken
+      userToken,
+      model
     )
       .then((result) => {
         const batch = activeBatches.get(batchId);
@@ -205,6 +208,7 @@ router.post('/start', batchLimiter, async (req: Request, res: Response) => {
 router.post('/upload-zip', batchLimiter, upload.single('zipFile'), async (req: Request, res: Response) => {
   try {
     const userId = getStorageUserId(req);
+    const model = await settingsService.getClaudeModel(userId);
     const file = req.file;
     const options = req.body.options ? JSON.parse(req.body.options) : {};
 
@@ -293,7 +297,8 @@ router.post('/upload-zip', batchLimiter, upload.single('zipFile'), async (req: R
             if (batch) {
               batch.completedDocuments.push(doc);
             }
-          }
+          },
+          model
         );
 
         // Generate table of contents
@@ -327,7 +332,7 @@ router.post('/upload-zip', batchLimiter, upload.single('zipFile'), async (req: R
         // Generate full repository documentation
         try {
           console.log('Auto-generating full repository documentation...');
-          result.fullRepoDocumentation = await generateFullRepoDocumentation(result);
+          result.fullRepoDocumentation = await generateFullRepoDocumentation(result, model);
           console.log('Full repository documentation generated successfully');
         } catch (error: any) {
           console.error('Failed to generate full repository documentation:', error);
@@ -491,8 +496,9 @@ router.post('/generate-full-doc/:batchId', batchLimiter, async (req: Request, re
 
     console.log(`Generating full-repo documentation for batch: ${batchId}`);
 
-    // Generate full repository documentation
-    const fullRepoDoc = await generateFullRepoDocumentation(batch.result);
+    // Generate full repository documentation using the requester's current model preference
+    const model = await settingsService.getClaudeModel(getStorageUserId(req));
+    const fullRepoDoc = await generateFullRepoDocumentation(batch.result, model);
 
     // Store it in the result
     batch.result.fullRepoDocumentation = fullRepoDoc;

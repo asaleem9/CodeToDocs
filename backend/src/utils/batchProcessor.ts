@@ -4,6 +4,7 @@ import * as fs from 'fs/promises';
 import * as path from 'path';
 import { generateDocumentation } from '../services/llmService';
 import { getAnthropicClient, classifyLlmError, LlmErrorKind } from '../services/llmClient';
+import { DEFAULT_MODEL } from '../services/settingsService';
 
 const execAsync = promisify(exec);
 
@@ -309,7 +310,8 @@ function getLanguageFromExtension(ext: string): string {
 export async function processBatch(
   files: FileToDocument[],
   onProgress?: (progress: BatchProgress) => void,
-  onFileComplete?: (doc: DocumentedFile) => void
+  onFileComplete?: (doc: DocumentedFile) => void,
+  model?: string
 ): Promise<DocumentedFile[]> {
   const results: DocumentedFile[] = [];
   let completed = 0;
@@ -339,7 +341,7 @@ export async function processBatch(
 
           console.log(`[${completed + 1}/${files.length}] Processing ${file.path}...`);
 
-          const result = await generateDocumentation(file.content, file.language);
+          const result = await generateDocumentation(file.content, file.language, { model });
 
           const docResult: DocumentedFile = {
             filePath: file.path,
@@ -531,9 +533,7 @@ export async function cleanupTempDir(dir: string): Promise<void> {
  * Generate comprehensive full-repository documentation
  * This aggregates all individual file docs into a cohesive overview
  */
-export async function generateFullRepoDocumentation(result: BatchResult): Promise<string> {
-  const { settingsService } = await import('../services/settingsService');
-
+export async function generateFullRepoDocumentation(result: BatchResult, model?: string): Promise<string> {
   const anthropic = getAnthropicClient();
 
   // Prepare a comprehensive context about the repository
@@ -603,8 +603,7 @@ Provide the documentation in well-structured Markdown format.`;
   try {
     console.log('Generating full repository documentation with Claude...');
 
-    // Get selected model from settings
-    const selectedModel = settingsService.getClaudeModel();
+    const selectedModel = model || DEFAULT_MODEL;
     console.log(`Using Claude model for full repo doc: ${selectedModel}`);
 
     const response = await anthropic.messages.create({
@@ -647,7 +646,8 @@ export async function processRepository(
   } = {},
   onProgress?: (progress: BatchProgress) => void,
   onFileComplete?: (doc: DocumentedFile) => void,
-  token?: string
+  token?: string,
+  model?: string
 ): Promise<BatchResult> {
   try {
     console.log(`Starting batch processing for: ${repoUrl}`);
@@ -663,7 +663,7 @@ export async function processRepository(
     console.log(`Found ${files.length} files to document`);
 
     // Process files
-    const documents = await processBatch(files, onProgress, onFileComplete);
+    const documents = await processBatch(files, onProgress, onFileComplete, model);
 
     // Generate table of contents
     const tableOfContents = generateTableOfContents(documents);
@@ -696,7 +696,7 @@ export async function processRepository(
     // Automatically generate full repository documentation
     try {
       console.log('Auto-generating full repository documentation...');
-      result.fullRepoDocumentation = await generateFullRepoDocumentation(result);
+      result.fullRepoDocumentation = await generateFullRepoDocumentation(result, model);
       console.log('Full repository documentation generated successfully');
     } catch (error: any) {
       console.error('Failed to generate full repository documentation:', error);

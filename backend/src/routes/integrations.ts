@@ -8,8 +8,13 @@ import {
   sendSlackNotification,
   checkIntegrations,
 } from '../utils/integrations';
+import { rateLimit } from '../middleware/rateLimit';
 
 const router = express.Router();
+
+// These fan out to third-party APIs (Notion, Confluence, Slack, GitHub) on the
+// server's behalf, so throttle the whole group against abuse.
+router.use(rateLimit({ windowMs: 5 * 60 * 1000, max: 30, keyPrefix: 'integrations' }));
 
 /**
  * POST /api/integrations/notion
@@ -83,6 +88,8 @@ router.post('/github-wiki', async (req: Request, res: Response) => {
 
     if (result.success) {
       res.json({ success: true, url: result.url });
+    } else if (result.notImplemented) {
+      res.status(501).json({ error: result.error, code: 'not_implemented' });
     } else {
       res.status(500).json({ error: result.error });
     }

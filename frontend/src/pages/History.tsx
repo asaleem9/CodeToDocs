@@ -1,34 +1,16 @@
 import { useState, useEffect, useRef } from 'react'
 import axios from 'axios'
-import ReactMarkdown from 'react-markdown'
-import remarkGfm from 'remark-gfm'
-import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
-import { paperTheme } from '../lib/syntaxTheme'
-import { renderMermaid } from '../lib/mermaid'
 import { useGSAP, bootSequence } from '../lib/motion'
 import { getLanguageColor } from '../lib/languages'
-import QualityScore from '../components/QualityScore'
+import { docTitle, formatDate } from '../lib/docMeta'
+import DocumentSheet from '../components/DocumentSheet'
 import Panel from '../components/ui/Panel'
 import Button from '../components/ui/Button'
 import Badge from '../components/ui/Badge'
 import EmptyState from '../components/ui/EmptyState'
 import Spinner from '../components/ui/Spinner'
 import { showErrorToast, showSuccessToast } from '../utils/errorHandler'
-
-interface QualityScoreData {
-  score: number
-  breakdown: {
-    hasOverview: boolean
-    hasParameters: boolean
-    hasReturnValues: boolean
-    hasExamples: boolean
-    hasUsage: boolean
-    hasDependencies: boolean
-    hasNotes: boolean
-    codeBlocksCount: number
-  }
-}
-
+import type { QualityScoreData } from '../types'
 
 interface StoredDoc {
   id: string
@@ -63,9 +45,7 @@ function History() {
   const [docs, setDocs] = useState<StoredDoc[]>([])
   const [selectedDoc, setSelectedDoc] = useState<StoredDoc | null>(null)
   const [isLoading, setIsLoading] = useState(true)
-  const [isDiagramCollapsed, setIsDiagramCollapsed] = useState<boolean>(false)
   const [activeTab, setActiveTab] = useState<'my-docs' | 'public'>('my-docs')
-  const diagramRef = useRef<HTMLDivElement>(null)
   const scopeRef = useRef<HTMLDivElement>(null)
 
   // page boot-in
@@ -79,13 +59,6 @@ function History() {
   useEffect(() => {
     fetchHistory()
   }, [activeTab])
-
-  // Render diagram when selected doc changes
-  useEffect(() => {
-    if (selectedDoc?.diagram && diagramRef.current) {
-      renderMermaid(diagramRef.current, selectedDoc.diagram)
-    }
-  }, [selectedDoc])
 
   const fetchHistory = async () => {
     setIsLoading(true)
@@ -147,45 +120,6 @@ function History() {
     } catch (err) {
       showErrorToast(err)
     }
-  }
-
-  const formatDate = (dateString: string) => {
-    if (!dateString) return 'Unknown'
-
-    const date = new Date(dateString)
-
-    // Check if date is valid
-    if (isNaN(date.getTime())) {
-      console.warn('Invalid date:', dateString)
-      return 'Invalid date'
-    }
-
-    const now = new Date()
-    const diffMs = now.getTime() - date.getTime()
-    const diffMins = Math.floor(diffMs / 60000)
-    const diffHours = Math.floor(diffMs / 3600000)
-    const diffDays = Math.floor(diffMs / 86400000)
-
-    if (diffMins < 1) return 'Just now'
-    if (diffMins < 60) return `${diffMins}m ago`
-    if (diffHours < 24) return `${diffHours}h ago`
-    if (diffDays < 7) return `${diffDays}d ago`
-
-    return date.toLocaleDateString('en-US', {
-      month: 'short',
-      day: 'numeric',
-      year: date.getFullYear() !== now.getFullYear() ? 'numeric' : undefined
-    })
-  }
-
-  const docTitle = (doc: StoredDoc) => {
-    if (doc.type === 'batch' && doc.batchInfo) {
-      return doc.batchInfo.repoUrl.split('/').slice(-2).join('/')
-    }
-    if (doc.prInfo) {
-      return `PR #${doc.prInfo.prNumber} · ${doc.prInfo.repository.split('/')[1]}`
-    }
-    return `${doc.language} · manual`
   }
 
   return (
@@ -362,52 +296,11 @@ function History() {
                   )}
                 </div>
 
-                {/* the printout */}
-                <div className="border border-paper-300 shadow-[0_14px_40px_rgba(0,0,0,0.5)]">
-                  <div className="markdown-content">
-                    <ReactMarkdown
-                      remarkPlugins={[remarkGfm]}
-                      components={{
-                        code({ node, inline, className, children, ...props }: any) {
-                          const match = /language-(\w+)/.exec(className || '')
-                          return !inline && match ? (
-                            <SyntaxHighlighter
-                              style={paperTheme}
-                              language={match[1]}
-                              PreTag="div"
-                              {...props}
-                            >
-                              {String(children).replace(/\n$/, '')}
-                            </SyntaxHighlighter>
-                          ) : (
-                            <code className={className} {...props}>
-                              {children}
-                            </code>
-                          )
-                        }
-                      }}
-                    >
-                      {selectedDoc.documentation}
-                    </ReactMarkdown>
-
-                    {selectedDoc.diagram && (
-                      <div className="border-t border-paper-300 px-2 pt-4 pb-2">
-                        <button
-                          className="flex w-full cursor-pointer items-center justify-between font-mono text-[11px] tracking-[0.14em] text-print-400 uppercase"
-                          onClick={() => setIsDiagramCollapsed(!isDiagramCollapsed)}
-                        >
-                          <span>figure 1 — flow diagram</span>
-                          <span aria-hidden>{isDiagramCollapsed ? '▸' : '▾'}</span>
-                        </button>
-                        {!isDiagramCollapsed && (
-                          <div ref={diagramRef} className="mt-3 flex justify-center overflow-x-auto" />
-                        )}
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                {selectedDoc.qualityScore && <QualityScore qualityScore={selectedDoc.qualityScore} />}
+                <DocumentSheet
+                  documentation={selectedDoc.documentation}
+                  diagram={selectedDoc.diagram}
+                  qualityScore={selectedDoc.qualityScore}
+                />
               </div>
             </div>
           ) : (

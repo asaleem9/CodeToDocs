@@ -1,7 +1,8 @@
 import express, { Request, Response } from 'express';
+import crypto from 'crypto';
 import { exchangeCodeForToken, getGitHubUser, getUserRepositories } from '../services/authService';
 import { tokenStorage } from '../services/tokenStorage';
-import { signToken } from '../utils/appToken';
+import { signToken, signAnonToken, verifyAnonToken } from '../utils/appToken';
 import { getAuthUser, getUserId } from '../middleware/auth';
 
 const router = express.Router();
@@ -99,6 +100,34 @@ router.get('/github/callback', async (req: Request, res: Response) => {
     console.error('Error during GitHub OAuth callback:', error);
     res.redirect(`${frontendUrl}/app/github?error=auth_failed`);
   }
+});
+
+/**
+ * POST /api/auth/anon
+ * Mint or renew a signed anonymous identity token. This is what keeps an
+ * anonymous user's document history intact across requests on Safari/Firefox,
+ * which drop the session cookie between the frontend and backend's separate
+ * *.run.app origins. No auth required, and no cookie is set here - the token
+ * travels in the Authorization header instead.
+ *
+ * If the caller already presents a valid anon bearer, the same anonId is
+ * re-signed with a fresh expiry (rolling renewal) so active anonymous users
+ * never lose their history. Otherwise a fresh negative id is minted.
+ */
+router.post('/anon', (req: Request, res: Response) => {
+  const header = req.headers['authorization'];
+  let anonId: number | null = null;
+
+  if (header && header.startsWith('Bearer ')) {
+    anonId = verifyAnonToken(header.slice('Bearer '.length));
+  }
+
+  if (anonId === null) {
+    // 1..2^31-1, negated. crypto.randomInt is unbiased.
+    anonId = -crypto.randomInt(1, 2_147_483_647);
+  }
+
+  res.json({ token: signAnonToken(anonId), anonId });
 });
 
 /**

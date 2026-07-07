@@ -77,6 +77,7 @@ function Batch() {
   const [localBatchId, setLocalBatchId] = useState<string>('')
   const [localIsProcessing, setLocalIsProcessing] = useState<boolean>(false)
   const [incrementalDocs, setIncrementalDocs] = useState<DocumentedFile[]>([])
+  const [isDiagramCollapsed, setIsDiagramCollapsed] = useState<boolean>(false)
   const progressInterval = useRef<ReturnType<typeof setInterval> | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const docsFetchedRef = useRef<number>(0)
@@ -715,6 +716,8 @@ function Batch() {
                         documentation={selectedDoc.documentation}
                         diagram={selectedDoc.diagram}
                         qualityScore={selectedDoc.qualityScore}
+                        diagramCollapsed={isDiagramCollapsed}
+                        onDiagramToggle={() => setIsDiagramCollapsed(!isDiagramCollapsed)}
                       />
                     ) : (
                       <div className="border border-red/25 bg-red/10 p-4">

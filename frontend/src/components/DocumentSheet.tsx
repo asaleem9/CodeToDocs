@@ -29,12 +29,30 @@ interface DocumentSheetProps {
   qualityScore?: QualityScoreData
   /** Suppresses the diagram + quality report and shows a trailing caret while a doc is still streaming in. */
   streaming?: boolean
+  /**
+   * Controlled diagram-collapse state. Pass both to have the caller own the
+   * toggle (e.g. so it survives this component unmounting/remounting across
+   * a list selection); omit both to fall back to an internal, uncontrolled
+   * default.
+   */
+  diagramCollapsed?: boolean
+  onDiagramToggle?: () => void
 }
 
 // The "printout": a bordered paper sheet holding rendered documentation,
 // its collapsible flow diagram, and the quality report below it.
-function DocumentSheet({ documentation, diagram, qualityScore, streaming = false }: DocumentSheetProps) {
-  const [isDiagramCollapsed, setIsDiagramCollapsed] = useState<boolean>(false)
+function DocumentSheet({
+  documentation,
+  diagram,
+  qualityScore,
+  streaming = false,
+  diagramCollapsed,
+  onDiagramToggle,
+}: DocumentSheetProps) {
+  const [internalCollapsed, setInternalCollapsed] = useState<boolean>(false)
+  const isControlled = onDiagramToggle !== undefined
+  const isDiagramCollapsed = isControlled ? !!diagramCollapsed : internalCollapsed
+  const toggleDiagram = isControlled ? onDiagramToggle : () => setInternalCollapsed((c) => !c)
   const diagramRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -61,7 +79,7 @@ function DocumentSheet({ documentation, diagram, qualityScore, streaming = false
             <div className="border-t border-paper-300 px-2 pt-4 pb-2">
               <button
                 className="flex w-full cursor-pointer items-center justify-between font-mono text-[11px] tracking-[0.14em] text-print-400 uppercase"
-                onClick={() => setIsDiagramCollapsed(!isDiagramCollapsed)}
+                onClick={toggleDiagram}
               >
                 <span>figure 1 — flow diagram</span>
                 <span aria-hidden>{isDiagramCollapsed ? '▸' : '▾'}</span>

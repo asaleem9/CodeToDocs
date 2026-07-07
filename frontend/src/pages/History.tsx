@@ -46,6 +46,7 @@ function History() {
   const [selectedDoc, setSelectedDoc] = useState<StoredDoc | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [activeTab, setActiveTab] = useState<'my-docs' | 'public'>('my-docs')
+  const [isDiagramCollapsed, setIsDiagramCollapsed] = useState<boolean>(false)
   const scopeRef = useRef<HTMLDivElement>(null)
 
   // page boot-in
@@ -300,6 +301,8 @@ function History() {
                   documentation={selectedDoc.documentation}
                   diagram={selectedDoc.diagram}
                   qualityScore={selectedDoc.qualityScore}
+                  diagramCollapsed={isDiagramCollapsed}
+                  onDiagramToggle={() => setIsDiagramCollapsed(!isDiagramCollapsed)}
                 />
               </div>
             </div>

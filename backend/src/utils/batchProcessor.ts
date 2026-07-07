@@ -3,6 +3,7 @@ import { promisify } from 'util';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import { generateDocumentation } from '../services/llmService';
+import { getAnthropicClient, classifyLlmError, LlmErrorKind } from '../services/llmClient';
 
 const execAsync = promisify(exec);
 
@@ -29,6 +30,8 @@ export interface DocumentedFile {
   qualityScore?: any;
   success: boolean;
   error?: string;
+  errorKind?: LlmErrorKind;
+  retryable?: boolean;
 }
 
 export interface BatchResult {
@@ -346,6 +349,8 @@ export async function processBatch(
             qualityScore: result.qualityScore,
             success: result.success,
             error: result.error,
+            errorKind: result.errorKind,
+            retryable: result.retryable,
           };
 
           if (!result.success) {
@@ -357,6 +362,7 @@ export async function processBatch(
           return docResult;
         } catch (error: any) {
           console.error(`✗ Error processing ${file.path}:`, error.message);
+          const classified = classifyLlmError(error);
 
           return {
             filePath: file.path,
@@ -364,6 +370,8 @@ export async function processBatch(
             documentation: '',
             success: false,
             error: error.message,
+            errorKind: classified.kind,
+            retryable: classified.retryable,
           };
         }
       })
@@ -524,16 +532,9 @@ export async function cleanupTempDir(dir: string): Promise<void> {
  * This aggregates all individual file docs into a cohesive overview
  */
 export async function generateFullRepoDocumentation(result: BatchResult): Promise<string> {
-  const Anthropic = (await import('@anthropic-ai/sdk')).default;
   const { settingsService } = await import('../services/settingsService');
 
-  // Get Anthropic API key
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) {
-    throw new Error('ANTHROPIC_API_KEY is not configured');
-  }
-
-  const anthropic = new Anthropic({ apiKey });
+  const anthropic = getAnthropicClient();
 
   // Prepare a comprehensive context about the repository
   const repoName = result.repoUrl.split('/').pop() || 'Repository';
@@ -626,7 +627,11 @@ Provide the documentation in well-structured Markdown format.`;
     throw new Error('Unexpected response format from Claude');
   } catch (error: any) {
     console.error('Error generating full repo documentation:', error);
-    throw new Error(`Failed to generate full repository documentation: ${error.message}`);
+    const classified = classifyLlmError(error);
+    const wrappedError: any = new Error(`Failed to generate full repository documentation: ${error.message}`);
+    wrappedError.errorKind = classified.kind;
+    wrappedError.retryable = classified.retryable;
+    throw wrappedError;
   }
 }
 

@@ -1,4 +1,4 @@
-import Anthropic from '@anthropic-ai/sdk';
+import { getAnthropicClient, classifyLlmError, LlmErrorKind } from './llmClient';
 import { calculateQualityScore, QualityScore } from './qualityScoreService';
 import { parseGraphQLSchema, generateGraphQLDiagram, generateExampleQueries } from '../utils/graphqlParser';
 import { settingsService } from './settingsService';
@@ -18,19 +18,8 @@ export interface DocumentationResult {
   qualityScore?: QualityScore;
   success: boolean;
   error?: string;
-}
-
-// Create Anthropic client lazily to ensure env vars are loaded
-function getAnthropicClient(): Anthropic {
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-
-  if (!apiKey) {
-    throw new Error('ANTHROPIC_API_KEY environment variable is not set');
-  }
-
-  return new Anthropic({
-    apiKey: apiKey,
-  });
+  errorKind?: LlmErrorKind;
+  retryable?: boolean;
 }
 
 /**
@@ -151,11 +140,14 @@ Return ONLY the Mermaid diagram code without any explanation or markdown code bl
     };
   } catch (error) {
     console.error('Error generating documentation:', error);
+    const classified = classifyLlmError(error);
 
     return {
       documentation: '',
       success: false,
       error: error instanceof Error ? error.message : 'Unknown error occurred',
+      errorKind: classified.kind,
+      retryable: classified.retryable,
     };
   }
 }

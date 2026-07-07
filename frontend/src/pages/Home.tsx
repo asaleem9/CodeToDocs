@@ -19,6 +19,7 @@ function Home() {
   const [language, setLanguage] = useState<string>('javascript')
   const [showDemoMenu, setShowDemoMenu] = useState<boolean>(false)
   const [pendingDemo, setPendingDemo] = useState<typeof demoSamples[0] | null>(null)
+  const [isDiagramCollapsed, setIsDiagramCollapsed] = useState<boolean>(false)
   const scopeRef = useRef<HTMLDivElement>(null)
 
   const job = useGenerationJob()
@@ -208,6 +209,8 @@ function Home() {
                   documentation={job.result.documentation}
                   diagram={job.result.diagram}
                   qualityScore={job.result.qualityScore}
+                  diagramCollapsed={isDiagramCollapsed}
+                  onDiagramToggle={() => setIsDiagramCollapsed(!isDiagramCollapsed)}
                 />
               </div>
             ) : isLoading ? (

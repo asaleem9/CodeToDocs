@@ -5,6 +5,7 @@ import AdmZip from 'adm-zip';
 import * as path from 'path';
 import * as fs from 'fs/promises';
 import { processRepository, BatchProgress, generateFullRepoDocumentation, scanCodeFiles, processBatch, generateTableOfContents, generateBatchSummary } from '../utils/batchProcessor';
+import { classifyLlmError, LlmErrorKind } from '../services/llmClient';
 import { documentationStorage } from '../services/storageService';
 import { getStorageUserId, getUserId } from '../middleware/auth';
 import { tokenStorage } from '../services/tokenStorage';
@@ -74,6 +75,8 @@ const activeBatches = new Map<string, {
   completedDocuments: any[];
   result?: any;
   error?: string;
+  errorKind?: LlmErrorKind;
+  retryable?: boolean;
 }>();
 
 // Sweep abandoned/errored batches so the map can't grow without bound.
@@ -182,7 +185,10 @@ router.post('/start', batchLimiter, async (req: Request, res: Response) => {
       .catch((error) => {
         const batch = activeBatches.get(batchId);
         if (batch) {
+          const classified = classifyLlmError(error);
           batch.error = error.message;
+          batch.errorKind = classified.kind;
+          batch.retryable = classified.retryable;
         }
       });
   } catch (error: any) {
@@ -362,7 +368,10 @@ router.post('/upload-zip', batchLimiter, upload.single('zipFile'), async (req: R
         console.error('Error processing zip file:', error);
         const batch = activeBatches.get(batchId);
         if (batch) {
+          const classified = classifyLlmError(error);
           batch.error = error.message;
+          batch.errorKind = classified.kind;
+          batch.retryable = classified.retryable;
         }
       } finally {
         // Clean up uploaded file and extracted directory
@@ -404,6 +413,8 @@ router.get('/progress/:batchId', (req: Request, res: Response) => {
     progress: batch.progress,
     completed: batch.result !== undefined,
     error: batch.error,
+    errorKind: batch.errorKind,
+    retryable: batch.retryable,
     completedDocuments: newDocuments,
     totalCompleted: batch.completedDocuments.length,
   });
@@ -424,7 +435,7 @@ router.get('/result/:batchId', (req: Request, res: Response) => {
   }
 
   if (batch.error) {
-    return res.status(500).json({ error: batch.error });
+    return res.status(500).json({ error: batch.error, errorKind: batch.errorKind, retryable: batch.retryable });
   }
 
   if (!batch.result) {
@@ -492,7 +503,7 @@ router.post('/generate-full-doc/:batchId', batchLimiter, async (req: Request, re
     });
   } catch (error: any) {
     console.error('Error generating full repo documentation:', error);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: error.message, errorKind: error.errorKind, retryable: error.retryable });
   }
 });
 

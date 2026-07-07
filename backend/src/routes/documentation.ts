@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
 import crypto from 'crypto';
 import { generateDocumentation } from '../services/llmService';
+import { classifyLlmError, LlmErrorKind } from '../services/llmClient';
 import { documentationStorage } from '../services/storageService';
 import { QualityScore } from '../services/qualityScoreService';
 import { getStorageUserId, canAccessDocument } from '../middleware/auth';
@@ -52,6 +53,8 @@ const activeJobs = new Map<string, {
   progress: JobProgress;
   result?: GenerateResponse;
   error?: string;
+  errorKind?: LlmErrorKind;
+  retryable?: boolean;
 }>();
 
 // Sweep abandoned/errored jobs so the map can't grow without bound (the
@@ -129,7 +132,10 @@ router.post('/generate', generateLimiter, async (req: Request, res: Response) =>
 
         // Handle service errors
         if (!result.success) {
-          activeJobs.get(jobId)!.error = result.error || 'Failed to generate documentation';
+          const job = activeJobs.get(jobId)!;
+          job.error = result.error || 'Failed to generate documentation';
+          job.errorKind = result.errorKind;
+          job.retryable = result.retryable;
           return;
         }
 
@@ -168,7 +174,11 @@ router.post('/generate', generateLimiter, async (req: Request, res: Response) =>
         };
       } catch (error: any) {
         console.error('Error generating documentation:', error);
-        activeJobs.get(jobId)!.error = error.message || 'Internal server error';
+        const job = activeJobs.get(jobId)!;
+        const classified = classifyLlmError(error);
+        job.error = error.message || 'Internal server error';
+        job.errorKind = classified.kind;
+        job.retryable = classified.retryable;
       }
     })();
   } catch (error) {
@@ -199,6 +209,8 @@ router.get('/generate/progress/:jobId', (req: Request, res: Response) => {
     progress: job.progress,
     completed: job.result !== undefined,
     error: job.error,
+    errorKind: job.errorKind,
+    retryable: job.retryable,
   });
 });
 
@@ -217,7 +229,7 @@ router.get('/generate/result/:jobId', (req: Request, res: Response) => {
   }
 
   if (job.error) {
-    return res.status(500).json({ error: job.error });
+    return res.status(500).json({ error: job.error, errorKind: job.errorKind, retryable: job.retryable });
   }
 
   if (!job.result) {

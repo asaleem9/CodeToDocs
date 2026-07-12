@@ -1,5 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
-import { getStorageUserId } from './auth';
+import { getUserId } from './auth';
 
 interface RateLimitOptions {
   windowMs: number; // window size in milliseconds
@@ -13,12 +13,16 @@ interface Bucket {
 }
 
 /**
- * Minimal in-memory fixed-window rate limiter. Keyed by the same stable
- * identity used for document storage - an authenticated user's id, or an
- * anonymous bearer/session id - and falls back to client IP only when that
- * resolves to 0 (no identity at all). Intended to protect expensive
- * endpoints (LLM calls) from abuse. For a multi-instance deployment this should
- * be backed by a shared store, but it meaningfully raises the bar as-is.
+ * Minimal in-memory fixed-window rate limiter. Keyed by the authenticated
+ * user's id, falling back to client IP for anyone without one. Deliberately
+ * does NOT key by getStorageUserId's anonymous id: that id is minted fresh
+ * on demand (a new session, or a new /api/auth/anon bearer token), so keying
+ * by it would let a caller shed its bucket just by dropping cookies or
+ * requesting a new anon token. Keying anonymous traffic by IP instead gives
+ * every anonymous caller sharing that IP a shared ceiling, which is the
+ * actual abuse control we want on the paid LLM endpoints. For a
+ * multi-instance deployment this should be backed by a shared store, but it
+ * meaningfully raises the bar as-is.
  */
 export function rateLimit(options: RateLimitOptions) {
   const { windowMs, max, keyPrefix } = options;
@@ -35,8 +39,8 @@ export function rateLimit(options: RateLimitOptions) {
   if (typeof sweep.unref === 'function') sweep.unref();
 
   return (req: Request, res: Response, next: NextFunction) => {
-    const storageId = getStorageUserId(req);
-    const identity = storageId !== 0 ? storageId : (req.ip ?? 'unknown');
+    const userId = getUserId(req);
+    const identity = userId !== null ? userId : (req.ip ?? 'unknown');
     const key = `${keyPrefix}:${identity}`;
     const now = Date.now();
 

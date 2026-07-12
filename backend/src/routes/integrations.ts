@@ -75,27 +75,22 @@ router.post('/confluence', async (req: Request, res: Response) => {
  * Sync documentation to GitHub Wiki
  */
 router.post('/github-wiki', async (req: Request, res: Response) => {
-  try {
-    const { markdown, pageName, config } = req.body;
+  const { markdown, pageName, config } = req.body;
 
-    if (!markdown || !pageName || !config?.token || !config?.owner || !config?.repo) {
-      return res.status(400).json({
-        error: 'Missing required fields: markdown, pageName, config (token, owner, repo)',
-      });
-    }
+  if (!markdown || !pageName || !config?.token || !config?.owner || !config?.repo) {
+    return res.status(400).json({
+      error: 'Missing required fields: markdown, pageName, config (token, owner, repo)',
+    });
+  }
 
-    const result = await syncToGitHubWiki(markdown, pageName, config);
+  const result = await syncToGitHubWiki(markdown, pageName, config);
 
-    if (result.success) {
-      res.json({ success: true, url: result.url });
-    } else if (result.notImplemented) {
-      res.status(501).json({ error: result.error, code: 'not_implemented' });
-    } else {
-      res.status(500).json({ error: result.error });
-    }
-  } catch (error: any) {
-    console.error('Error syncing to GitHub Wiki:', error);
-    res.status(500).json({ error: error.message });
+  if (result.success) {
+    res.json({ success: true, url: result.url });
+  } else if (result.notImplemented) {
+    res.status(501).json({ error: result.error, code: 'not_implemented' });
+  } else {
+    res.status(500).json({ error: result.error });
   }
 });
 

@@ -78,6 +78,7 @@ function Batch() {
   const [localIsProcessing, setLocalIsProcessing] = useState<boolean>(false)
   const [incrementalDocs, setIncrementalDocs] = useState<DocumentedFile[]>([])
   const [isDiagramCollapsed, setIsDiagramCollapsed] = useState<boolean>(false)
+  const [startError, setStartError] = useState<string | null>(null)
   const progressInterval = useRef<ReturnType<typeof setInterval> | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const docsFetchedRef = useRef<number>(0)
@@ -146,6 +147,7 @@ function Batch() {
           if (progressInterval.current) {
             clearInterval(progressInterval.current)
           }
+          setStartError(progressRes.data.error)
           showErrorToast({ response: { data: { error: progressRes.data.error } } })
         }
       } catch (err) {
@@ -236,6 +238,7 @@ function Batch() {
       }
 
       const loadingToastId = showLoadingToast('Starting batch processing...')
+      setStartError(null)
       setResult(null)
       setSelectedDoc(null)
       setIncrementalDocs([])
@@ -251,6 +254,7 @@ function Batch() {
       } catch (err: any) {
         dismissToast(loadingToastId)
         showErrorToast(err)
+        setStartError(err?.response?.data?.error || err?.message || 'Failed to start batch processing')
       }
     } else {
       // New ZIP file upload processing
@@ -264,6 +268,7 @@ function Batch() {
       }
 
       const loadingToastId = showLoadingToast('Uploading and processing zip file...')
+      setStartError(null)
       setResult(null)
       setSelectedDoc(null)
       setIncrementalDocs([])
@@ -295,6 +300,7 @@ function Batch() {
       } catch (err: any) {
         dismissToast(loadingToastId)
         showErrorToast(err)
+        setStartError(err?.response?.data?.error || err?.message || 'Failed to start batch processing')
       }
     }
   }
@@ -412,6 +418,15 @@ function Batch() {
           Document entire repositories automatically
         </p>
       </header>
+
+      {startError && (
+        <div className="flex flex-wrap items-center justify-between gap-3 border border-red/25 bg-red/10 px-4 py-3 font-mono text-[13px] text-red">
+          <span>{startError}</span>
+          <Button size="sm" variant="ghost" onClick={handleStartBatch}>
+            retry
+          </Button>
+        </div>
+      )}
 
       {/* input */}
       <div data-boot style={{ opacity: 0 }}>

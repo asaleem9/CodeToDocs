@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
+import { Link } from 'react-router-dom'
 import { gsap, useGSAP, bootSequence, prefersReducedMotion } from '../lib/motion'
 import DocumentSheet from '../components/DocumentSheet'
 import ExportMenu from '../components/ExportMenu'
@@ -14,6 +15,13 @@ import { showErrorToast, showSuccessToast } from '../utils/errorHandler'
 
 const LANGUAGES = ['javascript', 'typescript', 'python', 'java', 'graphql'] as const
 
+// Matches the backend's `code.length > 100_000` guard in routes/documentation.ts
+const CODE_LIMIT = 100_000
+
+function formatCodeSize(chars: number): string {
+  return `${(chars / 1000).toFixed(1)} KB`
+}
+
 function Home() {
   const [code, setCode] = useState<string>('')
   const [language, setLanguage] = useState<string>('javascript')
@@ -25,6 +33,14 @@ function Home() {
   const job = useGenerationJob()
   const isLoading = job.phase === 'submitting' || job.phase === 'running'
   const currentStatus = job.statusLog[job.statusLog.length - 1] || ''
+
+  const codeSize = code.length
+  const isOverLimit = codeSize > CODE_LIMIT
+  const sizeColorClass = isOverLimit
+    ? 'text-red'
+    : codeSize / CODE_LIMIT >= 0.8
+      ? 'text-amber'
+      : 'text-ink-400'
 
   // page boot-in
   useGSAP(
@@ -143,7 +159,7 @@ function Home() {
 
         <Button
           onClick={handleGenerateDocumentation}
-          disabled={isLoading || !code.trim()}
+          disabled={isLoading || !code.trim() || isOverLimit}
           loading={isLoading}
         >
           {isLoading ? currentStatus || 'generating…' : 'generate documentation'}
@@ -159,8 +175,13 @@ function Home() {
       </div>
 
       {job.error && (
-        <div className="border border-red/25 bg-red/10 px-4 py-3 font-mono text-[13px] text-red">
-          {job.error.message}
+        <div className="flex flex-wrap items-center justify-between gap-3 border border-red/25 bg-red/10 px-4 py-3 font-mono text-[13px] text-red">
+          <span>{job.error.message}</span>
+          {job.error.retryable !== false && (
+            <Button size="sm" variant="ghost" onClick={job.retry}>
+              retry
+            </Button>
+          )}
         </div>
       )}
 
@@ -169,7 +190,9 @@ function Home() {
         <Panel
           title="CODE INPUT"
           actions={
-            <span className="font-mono text-[11px] text-ink-400">{code.length} chars</span>
+            <span className={`font-mono text-[11px] ${sizeColorClass}`}>
+              {formatCodeSize(codeSize)} / {CODE_LIMIT / 1000} KB
+            </span>
           }
         >
           <textarea
@@ -179,6 +202,19 @@ function Home() {
             placeholder={`Paste your ${language} code here…`}
             spellCheck={false}
           />
+          {isOverLimit && (
+            <p className="border-t border-red/25 bg-red/10 px-5 py-2.5 font-mono text-[12px] leading-relaxed text-red">
+              This file is ~{formatCodeSize(codeSize)} — the generator tops out at{' '}
+              {CODE_LIMIT / 1000} KB. Trim it down, or use{' '}
+              <Link
+                to="/app/batch"
+                className="underline decoration-red/40 underline-offset-2 hover:text-ink-100"
+              >
+                /batch
+              </Link>{' '}
+              for whole repositories.
+            </p>
+          )}
         </Panel>
 
         <Panel

@@ -174,6 +174,29 @@ export class TokenStorageDb {
   }
 
   /**
+   * Ensure a users row exists for the given GitHub id (idempotent upsert).
+   * Used to give synthetic users — e.g. anonymous sessions, which key off a
+   * negative id and never go through OAuth — a row to satisfy the
+   * documentation table's FK, without touching a real user's existing row.
+   * Safe to call on every write.
+   */
+  async ensureUser(githubId: number, username: string): Promise<void> {
+    if (!db) {
+      return;
+    }
+
+    try {
+      await db.insert(users).values({
+        githubId,
+        githubUsername: username,
+      }).onConflictDoNothing({ target: users.githubId });
+    } catch (error) {
+      console.error('Error ensuring user row:', error);
+      throw error;
+    }
+  }
+
+  /**
    * Get user info by GitHub ID
    */
   async getUserInfoById(githubId: number): Promise<User | undefined> {

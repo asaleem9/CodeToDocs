@@ -52,10 +52,13 @@ class TokenStorage {
   async get(userId: number): Promise<string | null> {
     // Try database first
     try {
-      // We need username to query database, check memory cache
+      // We need a username to query the database. Check the memory cache
+      // first; on a cold start it'll be empty, so fall back to resolving the
+      // username from the DB by GitHub id instead of giving up.
       const memoryData = this.tokens.get(userId);
-      if (memoryData) {
-        const dbToken = await tokenStorageDb.getToken(memoryData.username);
+      const username = memoryData?.username ?? (await tokenStorageDb.getUserInfoById(userId))?.githubUsername;
+      if (username) {
+        const dbToken = await tokenStorageDb.getToken(username);
         if (dbToken) {
           return dbToken;
         }

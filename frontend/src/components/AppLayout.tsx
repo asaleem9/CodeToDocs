@@ -25,10 +25,6 @@ function Header() {
     // Clear any existing auth data before starting new OAuth flow
     localStorage.removeItem('app_token')
     localStorage.removeItem('github_user')
-    localStorage.removeItem('github_token')
-    localStorage.removeItem('github_user_id')
-    localStorage.removeItem('github_username')
-    localStorage.removeItem('github_avatar')
 
     // Redirect to GitHub OAuth
     window.location.href = `${config.apiUrl}/api/auth/github`

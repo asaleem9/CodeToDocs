@@ -13,7 +13,22 @@ import ProgressBar from '../components/ui/ProgressBar'
 import { demoSamples } from '../data/demoSamples'
 import { showErrorToast, showSuccessToast } from '../utils/errorHandler'
 
-const LANGUAGES = ['javascript', 'typescript', 'python', 'java', 'graphql'] as const
+const LANGUAGES = [
+  'javascript',
+  'typescript',
+  'python',
+  'java',
+  'go',
+  'rust',
+  'c++',
+  'c',
+  'c#',
+  'ruby',
+  'php',
+  'swift',
+  'kotlin',
+  'graphql',
+] as const
 
 // Matches the backend's `code.length > 100_000` guard in routes/documentation.ts
 const CODE_LIMIT = 100_000

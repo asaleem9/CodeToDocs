@@ -35,17 +35,15 @@ const FEATURES = [
 ]
 
 function GitHub() {
-  const [githubToken, setGithubToken] = useState<string>('')
   const [username, setUsername] = useState<string>('')
   const [avatarUrl, setAvatarUrl] = useState<string>('')
   const [repositories, setRepositories] = useState<GitHubRepository[]>([])
   const [isLoading, setIsLoading] = useState(false)
-  const [showTokenInput, setShowTokenInput] = useState(true)
+  const [showConnectPanel, setShowConnectPanel] = useState(true)
   const hasFetchedRepos = useRef(false)
-  const isFetchingRepos = useRef(false)
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
-  const { user, isAuthenticated } = useAuth()
+  const { user, isAuthenticated, login, checkAuth } = useAuth()
   const scopeRef = useRef<HTMLDivElement>(null)
 
   // page boot-in; re-runs when the view flips between auth and repo grid
@@ -53,40 +51,31 @@ function GitHub() {
     () => {
       if (scopeRef.current) bootSequence(scopeRef.current)
     },
-    { dependencies: [showTokenInput], scope: scopeRef }
+    { dependencies: [showConnectPanel], scope: scopeRef }
   )
 
-  // Handle OAuth success callback. The access token is NOT in the URL - it lives
-  // in the server session. We only receive the public profile for display and
-  // fetch repositories through the backend using the session token.
+  // Handle the OAuth redirect. Success carries the public profile in the URL
+  // (the access token stays server-side); failure carries an error code.
+  // Either way we clean the query params off the URL once we're done with them.
   useEffect(() => {
     const authSuccess = searchParams.get('auth')
+    const authError = searchParams.get('error')
     const userParam = searchParams.get('user')
 
     if (authSuccess === 'success' && userParam) {
       try {
         console.log('[GitHub] OAuth success detected')
 
-        // Decode and parse the public user profile
         const user = JSON.parse(decodeURIComponent(userParam))
-
-        // Cache only non-sensitive display info
-        localStorage.setItem('github_username', user.login)
-        localStorage.setItem('github_avatar', user.avatar_url)
-        localStorage.setItem('github_user', JSON.stringify(user))
-
         showSuccessToast(`Successfully logged in as @${user.login}!`)
 
-        // Update local state
         setUsername(user.login)
         setAvatarUrl(user.avatar_url)
-        setShowTokenInput(false)
+        setShowConnectPanel(false)
+        hasFetchedRepos.current = true
 
-        // Fetch repositories via the backend using the session token
+        checkAuth()
         fetchRepositoriesFromSession()
-
-        // Clean up URL
-        navigate('/app/github', { replace: true })
       } catch (error) {
         console.error('[GitHub] Error processing OAuth callback:', error)
         showErrorToast({
@@ -95,102 +84,35 @@ function GitHub() {
           }
         })
       }
+      navigate('/app/github', { replace: true })
+    } else if (authError) {
+      console.error('[GitHub] OAuth error:', authError)
+      showErrorToast({
+        response: {
+          data: { error: 'GitHub login failed. Please try again.' }
+        }
+      })
+      navigate('/app/github', { replace: true })
     }
   }, [searchParams, navigate])
 
   useEffect(() => {
     console.log('[GitHub] Auth state:', { isAuthenticated, user, hasFetchedRepos: hasFetchedRepos.current })
 
-    // Check localStorage for token first
-    const savedToken = localStorage.getItem('github_token')
-    const savedUsername = localStorage.getItem('github_username')
-    const savedAvatar = localStorage.getItem('github_avatar')
-
-    console.log('[GitHub] Checking localStorage:', { hasToken: !!savedToken, username: savedUsername })
-
-    // If we have a token in localStorage, use direct GitHub API
-    if (savedToken && savedUsername) {
-      setGithubToken(savedToken)
-      setUsername(savedUsername)
-      setAvatarUrl(savedAvatar || '')
-      setShowTokenInput(false)
-      // Only fetch if we haven't fetched before
-      if (!hasFetchedRepos.current) {
-        console.log('[GitHub] Fetching repos with localStorage token')
-        fetchRepositories(savedToken)
-        hasFetchedRepos.current = true
-      }
-      return
-    }
-
-    // Only try session-based auth if no localStorage token exists
-    if (isAuthenticated && user && !savedToken && !hasFetchedRepos.current) {
+    if (isAuthenticated && user && !hasFetchedRepos.current) {
       console.log('[GitHub] User is authenticated via OAuth, fetching repositories from session')
-      // Fetch repositories using the OAuth token stored in the session
       fetchRepositoriesFromSession()
       setUsername(user.login)
       setAvatarUrl(user.avatar_url)
-      setShowTokenInput(false)
+      setShowConnectPanel(false)
       hasFetchedRepos.current = true
     }
   }, [isAuthenticated, user])
 
-  const handleConnect = async () => {
-    if (!githubToken.trim()) {
-      showErrorToast({
-        response: {
-          data: { error: 'Please enter your GitHub Personal Access Token' }
-        }
-      })
-      return
-    }
-
-    setIsLoading(true)
-    try {
-      // Verify token and get user info. This is a direct cross-origin call to
-      // GitHub, so we must not send our session cookie (GitHub replies with a
-      // wildcard CORS origin, which browsers reject in credentialed mode).
-      const response = await axios.get('https://api.github.com/user', {
-        withCredentials: false,
-        headers: {
-          Authorization: `token ${githubToken}`,
-          Accept: 'application/json',
-        },
-      })
-
-      const user = response.data
-      setUsername(user.login)
-      setAvatarUrl(user.avatar_url)
-      setShowTokenInput(false)
-
-      // Store in localStorage
-      localStorage.setItem('github_token', githubToken)
-      localStorage.setItem('github_username', user.login)
-      localStorage.setItem('github_avatar', user.avatar_url)
-
-      showSuccessToast(`Connected as @${user.login}`)
-
-      // Fetch repositories
-      fetchRepositories(githubToken)
-    } catch (error: any) {
-      showErrorToast({
-        response: {
-          data: { error: 'Invalid GitHub token. Please check and try again.' }
-        }
-      })
-    } finally {
-      setIsLoading(false)
-    }
-  }
-
   const handleDisconnect = () => {
-    localStorage.removeItem('github_token')
-    localStorage.removeItem('github_username')
-    localStorage.removeItem('github_avatar')
-    setGithubToken('')
     setUsername('')
     setAvatarUrl('')
-    setShowTokenInput(true)
+    setShowConnectPanel(true)
     setRepositories([])
     hasFetchedRepos.current = false
     showSuccessToast('Disconnected from GitHub')
@@ -214,40 +136,6 @@ function GitHub() {
     }
   }
 
-  const fetchRepositories = async (token: string) => {
-    // Prevent concurrent fetches
-    if (isFetchingRepos.current) {
-      console.log('[GitHub] fetchRepositories already in progress, skipping...')
-      return
-    }
-
-    console.log('[GitHub] fetchRepositories called with token:', token.substring(0, 10) + '...')
-    isFetchingRepos.current = true
-    setIsLoading(true)
-    try {
-      const response = await axios.get('https://api.github.com/user/repos', {
-        withCredentials: false,
-        headers: {
-          Authorization: `token ${token}`,
-          Accept: 'application/json',
-        },
-        params: {
-          per_page: 100,
-          sort: 'updated',
-          affiliation: 'owner,collaborator',
-        },
-      })
-      console.log('[GitHub] Successfully fetched', response.data.length, 'repositories')
-      setRepositories(response.data)
-    } catch (error: any) {
-      console.error('[GitHub] Error fetching repositories:', error)
-      showErrorToast(error)
-    } finally {
-      setIsLoading(false)
-      isFetchingRepos.current = false
-    }
-  }
-
   const handleDocumentRepo = (repoUrl: string) => {
     // Navigate to batch page with the repo URL pre-filled
     navigate('/app/batch', { state: { repoUrl } })
@@ -266,7 +154,7 @@ function GitHub() {
     return `${Math.floor(diffInDays / 365)} years ago`
   }
 
-  if (showTokenInput) {
+  if (showConnectPanel) {
     return (
       <div
         ref={scopeRef}
@@ -293,60 +181,14 @@ function GitHub() {
                 Connect to GitHub
               </h1>
               <p className="max-w-md font-sans text-sm text-ink-400">
-                Enter your GitHub Personal Access Token to access your repositories and generate
-                documentation automatically.
+                Log in with GitHub to access your repositories and generate documentation
+                automatically.
               </p>
             </div>
 
-            <div className="flex flex-col gap-2">
-              <label htmlFor="github-token" className="font-mono text-[12px] text-ink-300">
-                github personal access token
-              </label>
-              <input
-                id="github-token"
-                type="password"
-                value={githubToken}
-                onChange={(e) => setGithubToken(e.target.value)}
-                placeholder="ghp_xxxxxxxxxxxxxxxxxxxx"
-                className="w-full rounded-[2px] border border-ink-700 bg-ink-850 px-3.5 py-2.5 font-mono text-[13px] text-ink-100 transition-colors placeholder:text-ink-400 hover:border-ink-600 focus:border-phosphor-500 focus:outline-none"
-                disabled={isLoading}
-                onKeyDown={(e) => e.key === 'Enter' && handleConnect()}
-              />
-              <Button
-                onClick={handleConnect}
-                disabled={isLoading || !githubToken.trim()}
-                loading={isLoading}
-                className="mt-1 w-full"
-              >
-                {isLoading ? 'connecting…' : 'connect to github'}
-              </Button>
-            </div>
-
-            <div className="flex flex-col gap-2.5 border-t border-ink-700 pt-6">
-              <h3 className="font-display text-[12px] tracking-[0.14em] text-ink-300 uppercase">
-                How to get a token
-              </h3>
-              <ol className="flex list-decimal flex-col gap-1 pl-5 font-sans text-sm text-ink-300 marker:font-mono marker:text-ink-400">
-                <li>
-                  Go to{' '}
-                  <a
-                    href="https://github.com/settings/tokens"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-phosphor-300 transition-colors hover:text-phosphor-200"
-                  >
-                    GitHub Settings → Developer settings → Personal access tokens
-                  </a>
-                </li>
-                <li>Click "Generate new token (classic)"</li>
-                <li>
-                  Give it a name and select the{' '}
-                  <code className="font-mono text-[12.5px] text-phosphor-300">repo</code> scope
-                </li>
-                <li>Click "Generate token" and copy the token</li>
-                <li>Paste it above and click "Connect to GitHub"</li>
-              </ol>
-            </div>
+            <Button onClick={login} className="w-full">
+              login with github
+            </Button>
 
             <div className="flex flex-col gap-2.5 border-t border-ink-700 pt-6">
               <h3 className="font-display text-[12px] tracking-[0.14em] text-ink-300 uppercase">

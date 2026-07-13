@@ -11,29 +11,21 @@ import Batch from './pages/Batch'
 import PullRequest from './pages/PullRequest'
 import Integrations from './pages/Integrations'
 import GitHub from './pages/GitHub'
-import MobileGate from './components/MobileGate'
-import { useIsMobile } from './hooks/useIsMobile'
 
 function AppRoutes() {
-  const isMobile = useIsMobile()
-
   return (
     <Routes>
       <Route path="/" element={<Landing />} />
-      {isMobile ? (
-        <Route path="/app/*" element={<MobileGate />} />
-      ) : (
-        <Route path="/app" element={<AppLayout />}>
-          <Route index element={<Home />} />
-          <Route path="batch" element={<Batch />} />
-          <Route path="pr" element={<PullRequest />} />
-          <Route path="integrations" element={<Integrations />} />
-          <Route path="history" element={<History />} />
-          <Route path="docs/:id" element={<DocView />} />
-          <Route path="github" element={<GitHub />} />
-          <Route path="settings" element={<Settings />} />
-        </Route>
-      )}
+      <Route path="/app" element={<AppLayout />}>
+        <Route index element={<Home />} />
+        <Route path="batch" element={<Batch />} />
+        <Route path="pr" element={<PullRequest />} />
+        <Route path="integrations" element={<Integrations />} />
+        <Route path="history" element={<History />} />
+        <Route path="docs/:id" element={<DocView />} />
+        <Route path="github" element={<GitHub />} />
+        <Route path="settings" element={<Settings />} />
+      </Route>
     </Routes>
   )
 }

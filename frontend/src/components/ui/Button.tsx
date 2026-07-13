@@ -16,8 +16,8 @@ const VARIANTS: Record<ButtonVariant, string> = {
 }
 
 const SIZES: Record<ButtonSize, string> = {
-  sm: 'px-3 py-1.5 text-[12.5px] gap-1.5',
-  md: 'px-4 py-2 text-[13.5px] gap-2',
+  sm: 'px-3 py-1.5 text-[12.5px] gap-1.5 pointer-coarse:py-2.5',
+  md: 'px-4 py-2 text-[13.5px] gap-2 pointer-coarse:py-3',
 }
 
 interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
@@ -29,7 +29,7 @@ interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 
 /** Class string for styling a Link/anchor like a Button. */
 export function buttonClasses(variant: ButtonVariant = 'primary', size: ButtonSize = 'md') {
-  return `inline-flex cursor-pointer items-center justify-center rounded-[2px] border font-mono font-medium transition-colors duration-150 select-none disabled:cursor-not-allowed disabled:opacity-40 ${VARIANTS[variant]} ${SIZES[size]}`
+  return `inline-flex cursor-pointer items-center justify-center rounded-[2px] border font-mono font-medium transition-colors duration-150 select-none disabled:cursor-not-allowed disabled:opacity-40 active:bg-phosphor-400/15 ${VARIANTS[variant]} ${SIZES[size]}`
 }
 
 function Button({

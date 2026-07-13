@@ -13,6 +13,22 @@
   line-height: 1.72;
   padding: 2.25rem 2.5rem 2.75rem;
   scrollbar-color: var(--color-paper-300) transparent;
+  overflow-wrap: break-word;
+}
+
+/* narrow sheet: tighter margins and a smaller h1, body text stays put —
+   serif at ~1.02rem is the right line length even on a ~343px page */
+@media (max-width: 40rem) {
+  .markdown-content {
+    padding: 1.25rem 1rem 1.5rem;
+  }
+  .markdown-content h1 {
+    font-size: 1.55rem;
+  }
+  .markdown-content table {
+    display: block;
+    overflow-x: auto;
+  }
 }
 
 .markdown-content h1,

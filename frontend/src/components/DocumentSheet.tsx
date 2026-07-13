@@ -85,7 +85,7 @@ function DocumentSheet({
                 <span aria-hidden>{isDiagramCollapsed ? '▸' : '▾'}</span>
               </button>
               {!isDiagramCollapsed && (
-                <div ref={diagramRef} className="mt-3 flex justify-center overflow-x-auto" />
+                <div ref={diagramRef} className="mt-3 overflow-x-auto [&_svg]:mx-auto" />
               )}
             </div>
           )}

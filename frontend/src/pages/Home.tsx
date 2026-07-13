@@ -304,6 +304,13 @@ function Home() {
                   onDiagramToggle={() => setIsDiagramCollapsed(!isDiagramCollapsed)}
                 />
               </div>
+            ) : isLoading && job.streamText ? (
+              // Live SSE text (see useGenerationJob) — the arriving text IS
+              // the typewriter, so there's no tween to gate on reduced motion
+              // here; DocumentSheet handles the caret decoration itself.
+              <div className="flex min-h-full flex-col gap-4 p-4">
+                <DocumentSheet documentation={job.streamText} streaming />
+              </div>
             ) : isLoading ? (
               <div className="p-5 font-mono text-[13px] leading-loose">
                 {job.statusLog.map((line, i) => (

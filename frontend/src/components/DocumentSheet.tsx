@@ -4,6 +4,7 @@ import remarkGfm from 'remark-gfm'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { paperTheme } from '../lib/syntaxTheme'
 import { renderMermaid } from '../lib/mermaid'
+import { prefersReducedMotion } from '../lib/motion'
 import QualityScore from './QualityScore'
 import type { QualityScoreData } from '../types'
 
@@ -69,7 +70,7 @@ function DocumentSheet({
             {documentation}
           </ReactMarkdown>
 
-          {streaming && (
+          {streaming && !prefersReducedMotion() && (
             <span aria-hidden className="animate-caret-blink text-phosphor-400">
               ▮
             </span>

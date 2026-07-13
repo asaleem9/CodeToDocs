@@ -30,7 +30,13 @@ export interface GenerationError {
 // Only the single-doc endpoint fans out live SSE events (see A7) — every
 // other endpoint (the PR flow) polls exactly as it always has.
 const STREAMABLE_ENDPOINT = '/api/generate'
-const STREAM_FALLBACK_MS = 4000
+// Window for the very first frame after opening the connection — nothing
+// has proven the stream works yet, so fail fast.
+const STREAM_FALLBACK_INITIAL_MS = 4000
+// Window used to rearm after any proof of life (a real event or a heartbeat
+// comment). Must clear the backend's 15s heartbeat interval comfortably, or
+// a healthy stream sitting quiet between deltas would false-trip to polling.
+const STREAM_FALLBACK_LIVE_MS = 20000
 const DELTA_FLUSH_MS = 80
 
 // The SSE connection is a bare fetch(), not axios, so it needs its own copy
@@ -173,12 +179,9 @@ export function useGenerationJob() {
     pollProgress(jobId)
   }
 
-  const armStreamFallback = (jobId: string) => {
+  const armStreamFallback = (jobId: string, ms: number) => {
     clearStreamFallback()
-    streamFallbackTimerRef.current = window.setTimeout(
-      () => fallbackToPolling(jobId),
-      STREAM_FALLBACK_MS
-    )
+    streamFallbackTimerRef.current = window.setTimeout(() => fallbackToPolling(jobId), ms)
   }
 
   // Buffers deltas in a ref and flushes to React state at most every 80ms, so
@@ -194,9 +197,17 @@ export function useGenerationJob() {
 
   // Applies one `event:`/`data:` SSE frame to hook state. Returns false for
   // frames with nothing to apply (heartbeat `: ping` comments, malformed
-  // JSON) so the caller can skip them without touching the fallback timer.
+  // JSON) so the caller can skip the rest of its post-frame bookkeeping.
   const handleStreamFrame = (frame: string, jobId: string): boolean => {
-    if (!frame.trim() || frame.startsWith(':')) return false
+    if (!frame.trim()) return false
+    if (frame.startsWith(':')) {
+      // A bare SSE comment — the backend's heartbeat. No application event to
+      // apply, but it's still proof the connection is alive, so it needs to
+      // keep the fallback timer from firing during a quiet stretch between
+      // deltas exactly like a real event would.
+      armStreamFallback(jobId, STREAM_FALLBACK_LIVE_MS)
+      return false
+    }
 
     let event = 'message'
     const dataLines: string[] = []
@@ -222,17 +233,24 @@ export function useGenerationJob() {
           const status = payload.progress.status
           if (status) setStatusLog((log) => (log[log.length - 1] === status ? log : [...log, status]))
         }
-        // Belt-and-suspenders: rearm rather than clear. A snapshot only
-        // proves the connection opened, not that live events are flowing —
-        // the done/error that normally follows a finished job arrives as its
-        // own frame, so this still needs to time out if nothing does.
-        armStreamFallback(jobId)
+        // A reconnect to an already-finished job gets `done`/`error` set
+        // right on the snapshot, with the backend writing the real done/error
+        // frame immediately behind it on the same connection (see A7) — rearm
+        // short rather than sitting on the long live-stream window for a
+        // frame that's either about to land or, if something's actually
+        // wrong, never will. Otherwise this is proof the connection is open
+        // and talking, same as any other frame — rearm long enough to clear
+        // the heartbeat interval.
+        armStreamFallback(
+          jobId,
+          payload.done || payload.error ? STREAM_FALLBACK_INITIAL_MS : STREAM_FALLBACK_LIVE_MS
+        )
         break
 
       case 'delta':
         streamTextRef.current += payload.text || ''
         scheduleStreamFlush()
-        clearStreamFallback() // a real delta proves the stream is live
+        armStreamFallback(jobId, STREAM_FALLBACK_LIVE_MS) // a real delta proves the stream is live
         break
 
       case 'progress':
@@ -240,7 +258,7 @@ export function useGenerationJob() {
         if (payload.status) {
           setStatusLog((log) => (log[log.length - 1] === payload.status ? log : [...log, payload.status]))
         }
-        clearStreamFallback()
+        armStreamFallback(jobId, STREAM_FALLBACK_LIVE_MS)
         break
 
       case 'done':
@@ -276,7 +294,7 @@ export function useGenerationJob() {
     streamTextRef.current = ''
     setStreamText('')
 
-    armStreamFallback(jobId)
+    armStreamFallback(jobId, STREAM_FALLBACK_INITIAL_MS)
 
     fetch(`${config.apiUrl}/api/generate/stream/${jobId}`, {
       headers: { Accept: 'text/event-stream', ...authHeader() },
@@ -294,7 +312,16 @@ export function useGenerationJob() {
 
         while (streamActiveRef.current) {
           const { value, done } = await reader.read()
-          if (done) break
+          if (done) {
+            // The connection closed cleanly (e.g. the backend went away)
+            // without ever sending a done/error frame — streamActiveRef is
+            // still true, so this isn't a resolved job, just a dead
+            // connection. fallbackToPolling() is the guarded, idempotent
+            // handoff either way (a no-op if the job already resolved a
+            // moment earlier and closeStream() already flipped the ref).
+            fallbackToPolling(jobId)
+            return
+          }
           buffer += decoder.decode(value, { stream: true })
           const frames = buffer.split('\n\n')
           buffer = frames.pop() || ''

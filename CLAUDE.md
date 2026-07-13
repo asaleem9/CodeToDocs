@@ -126,13 +126,23 @@ effects (glow, scanlines). Don't hardcode hex values in components; use the toke
   horizontal overflow.
 - Export templates (`src/utils/exportUtils.ts`) share the paper/ink look — keep them in
   sync with `styles/markdown.css` when the paper palette changes.
+- **Mobile** is additive-only: every mobile rule is a `max-*`/`pointer-coarse:` variant layered
+  on top of the existing desktop classes, never a change to a base or `lg:` class, so `lg+` stays
+  pixel-identical. Use `dvh`, not `vh`, for any height applied on mobile — the address bar resizes
+  `vh` out from under you. Two-pane pages (History, Batch) add a drill-in on top of their existing
+  `lg`-collapse: selecting an item hides the list (`max-lg:hidden`) and shows the detail full-width
+  with a `lg:hidden` back row; Batch can't key that off `selectedDoc === null` since `null` is a
+  valid selection there (the full-repo doc), so it tracks an explicit `mobileDetailOpen` boolean
+  instead. The `[ NAVIGATION ]` overlay (`AppLayout.tsx`'s `Header`, `md:hidden`) is the mobile nav
+  pattern — full-screen `Panel`, closes on route change and Escape — and sits at `z-[60]`, above
+  the `BatchProgressModal`/`Menu` dropdown tier (`z-50`).
 
 ## Frontend layout note
 
 Pages that render a long generated document must **cap the panel's height** and let it scroll
 internally, or the whole page stretches to fit the content. The pattern now lives in
 `frontend/src/pages/History.tsx` as Tailwind utilities: a viewport-height container
-(`h-[calc(100vh-24rem)]`), `min-h-0` on every flex/grid ancestor of the scroll area, and
+(`lg:h-[calc(100dvh-24rem)]`), `min-h-0` on every flex/grid ancestor of the scroll area, and
 `overflow-y-auto` on the scrollers themselves. Batch caps its detail panel with `max-h-[800px]`.
 
 ## Known limitations (current production)

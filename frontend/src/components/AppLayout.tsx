@@ -112,7 +112,10 @@ function Header() {
       </div>
 
       {navOpen && (
-        <div className="fixed inset-0 z-50 flex flex-col bg-ink-950/95 p-5 md:hidden">
+        // z-[60]: above the BatchProgressModal / Menu dropdown tier (z-50) so
+        // a running batch's floating widget can't paint over the full-screen
+        // nav — below the Toaster, which always needs to read through.
+        <div className="fixed inset-0 z-[60] flex flex-col bg-ink-950/95 p-5 md:hidden">
           <Panel
             title="NAVIGATION"
             actions={

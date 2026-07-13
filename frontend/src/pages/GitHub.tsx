@@ -164,7 +164,7 @@ function GitHub() {
           <Panel
             title="GITHUB ACCESS"
             className="mx-auto w-full max-w-xl"
-            contentClassName="gap-7 p-8"
+            contentClassName="gap-7 p-8 max-sm:p-5"
           >
             <div className="flex flex-col items-center gap-3 text-center">
               <svg

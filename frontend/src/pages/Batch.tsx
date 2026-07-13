@@ -70,6 +70,10 @@ function Batch() {
   const [repoUrl, setRepoUrl] = useState<string>('')
   const [result, setResult] = useState<BatchResult | null>(null)
   const [selectedDoc, setSelectedDoc] = useState<DocumentedFile | null>(null)
+  // Explicit drill-in flag for the mobile TOC/detail layout — selectedDoc
+  // being null legitimately means "show the full repo doc", so it can't
+  // double as the mobile "am I showing detail" flag the way History's can.
+  const [mobileDetailOpen, setMobileDetailOpen] = useState<boolean>(false)
   const [maxFiles, setMaxFiles] = useState<number>(50)
   const [uploadMode, setUploadMode] = useState<'url' | 'zip'>('url')
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
@@ -241,6 +245,7 @@ function Batch() {
       setStartError(null)
       setResult(null)
       setSelectedDoc(null)
+      setMobileDetailOpen(false)
       setIncrementalDocs([])
       docsFetchedRef.current = 0
 
@@ -271,6 +276,7 @@ function Batch() {
       setStartError(null)
       setResult(null)
       setSelectedDoc(null)
+      setMobileDetailOpen(false)
       setIncrementalDocs([])
       docsFetchedRef.current = 0
 
@@ -470,7 +476,7 @@ function Batch() {
                     placeholder="https://github.com/username/repository"
                     disabled={isProcessing}
                     spellCheck={false}
-                    className="w-full flex-1 bg-transparent py-2.5 font-mono text-[13.5px] text-ink-100 placeholder:text-ink-400 focus:outline-none disabled:opacity-40"
+                    className="w-full flex-1 bg-transparent py-2.5 font-mono text-[13.5px] text-ink-100 placeholder:text-ink-400 focus:outline-none disabled:opacity-40 max-md:text-[16px]"
                   />
                 </div>
               </div>
@@ -530,7 +536,7 @@ function Batch() {
                 min="1"
                 max="100"
                 disabled={isProcessing}
-                className="w-24 rounded-[2px] border border-ink-700 bg-ink-950/60 px-3 py-2 font-mono text-[13.5px] text-ink-100 transition-colors focus:border-phosphor-500 focus:outline-none disabled:opacity-40"
+                className="w-24 rounded-[2px] border border-ink-700 bg-ink-950/60 px-3 py-2 font-mono text-[13.5px] text-ink-100 transition-colors focus:border-phosphor-500 focus:outline-none disabled:opacity-40 max-md:text-[16px]"
               />
               <span className="font-sans text-[12px] text-ink-400">
                 Limit the number of files to process (1–100)
@@ -627,7 +633,12 @@ function Batch() {
           </div>
 
           <div className="grid min-h-0 grid-cols-1 gap-5 lg:grid-cols-[350px_1fr]">
-            <Panel title="CONTENTS" className="min-h-0 min-w-0 max-h-[800px] max-lg:max-h-[400px]">
+            <Panel
+              title="CONTENTS"
+              className={`min-h-0 min-w-0 max-h-[800px] max-lg:max-h-[400px] ${
+                mobileDetailOpen ? 'max-lg:hidden' : ''
+              }`}
+            >
               {/* summary strip */}
               <div className="grid shrink-0 grid-cols-3 gap-px border-b border-ink-700 bg-ink-700">
                 <div className="bg-ink-900 px-3 py-2.5 text-center">
@@ -659,7 +670,10 @@ function Batch() {
               <div className="min-h-0 flex-1 overflow-y-auto">
                 {result.fullRepoDocumentation && (
                   <div
-                    onClick={() => setSelectedDoc(null)}
+                    onClick={() => {
+                      setSelectedDoc(null)
+                      setMobileDetailOpen(true)
+                    }}
                     className={`cursor-pointer border-b border-l-2 border-b-ink-700/60 px-4 py-3 transition-colors ${
                       selectedDoc === null
                         ? 'border-l-phosphor-400 bg-phosphor-400/5'
@@ -678,7 +692,10 @@ function Batch() {
                 {result.documents.map((doc, index) => (
                   <div
                     key={index}
-                    onClick={() => setSelectedDoc(doc)}
+                    onClick={() => {
+                      setSelectedDoc(doc)
+                      setMobileDetailOpen(true)
+                    }}
                     className={`cursor-pointer border-b border-l-2 border-b-ink-700/60 px-4 py-3 transition-colors ${
                       selectedDoc === doc
                         ? 'border-l-phosphor-400 bg-phosphor-400/5'
@@ -714,55 +731,66 @@ function Batch() {
             <Panel
               title="DOCUMENT"
               active={!!selectedDoc || !!result.fullRepoDocumentation}
-              className="min-h-0 min-w-0 max-h-[800px] max-lg:max-h-[400px]"
+              className={`min-h-0 min-w-0 max-h-[800px] max-lg:h-[calc(100dvh-14rem)] ${
+                mobileDetailOpen ? '' : 'max-lg:hidden'
+              }`}
             >
-              <div className="min-h-0 flex-1 overflow-y-auto">
-                {selectedDoc ? (
-                  <div className="flex min-h-full flex-col gap-4 p-4">
-                    <div className="flex flex-wrap items-center justify-between gap-3">
-                      <h2 className="min-w-0 truncate font-mono text-[14px] text-ink-100">
-                        {selectedDoc.filePath}
-                      </h2>
-                      <Badge tone="phosphor">{selectedDoc.language}</Badge>
-                    </div>
-
-                    {selectedDoc.success ? (
-                      <DocumentSheet
-                        documentation={selectedDoc.documentation}
-                        diagram={selectedDoc.diagram}
-                        qualityScore={selectedDoc.qualityScore}
-                        diagramCollapsed={isDiagramCollapsed}
-                        onDiagramToggle={() => setIsDiagramCollapsed(!isDiagramCollapsed)}
-                      />
-                    ) : (
-                      <div className="border border-red/25 bg-red/10 p-4">
-                        <p className="font-mono text-[13px] text-red">
-                          failed to generate documentation
-                        </p>
-                        <p className="mt-1 font-sans text-[13px] text-ink-300">
-                          {selectedDoc.error || 'Unknown error occurred'}
-                        </p>
+              <div className="flex min-h-0 flex-1 flex-col">
+                {/* drill-in back control — desktop shows both panes side by
+                    side, so this row only exists below lg */}
+                <div className="border-b border-ink-700/60 px-2 py-2 lg:hidden">
+                  <Button size="sm" variant="ghost" onClick={() => setMobileDetailOpen(false)}>
+                    ← back
+                  </Button>
+                </div>
+                <div className="min-h-0 flex-1 overflow-y-auto">
+                  {selectedDoc ? (
+                    <div className="flex min-h-full flex-col gap-4 p-4">
+                      <div className="flex flex-wrap items-center justify-between gap-3">
+                        <h2 className="min-w-0 truncate font-mono text-[14px] text-ink-100">
+                          {selectedDoc.filePath}
+                        </h2>
+                        <Badge tone="phosphor">{selectedDoc.language}</Badge>
                       </div>
-                    )}
-                  </div>
-                ) : result.fullRepoDocumentation ? (
-                  <div className="flex min-h-full flex-col gap-4 p-4">
-                    <div className="flex flex-wrap items-center justify-between gap-3">
-                      <h2 className="min-w-0 truncate font-mono text-[14px] text-ink-100">
-                        Full Repository Documentation
-                      </h2>
-                      <Badge tone="phosphor">complete overview</Badge>
-                    </div>
 
-                    <DocumentSheet documentation={result.fullRepoDocumentation} />
-                  </div>
-                ) : (
-                  <EmptyState
-                    glyph="¶"
-                    title="select a file"
-                    hint="Pick a file from the table of contents to view its documentation."
-                  />
-                )}
+                      {selectedDoc.success ? (
+                        <DocumentSheet
+                          documentation={selectedDoc.documentation}
+                          diagram={selectedDoc.diagram}
+                          qualityScore={selectedDoc.qualityScore}
+                          diagramCollapsed={isDiagramCollapsed}
+                          onDiagramToggle={() => setIsDiagramCollapsed(!isDiagramCollapsed)}
+                        />
+                      ) : (
+                        <div className="border border-red/25 bg-red/10 p-4">
+                          <p className="font-mono text-[13px] text-red">
+                            failed to generate documentation
+                          </p>
+                          <p className="mt-1 font-sans text-[13px] text-ink-300">
+                            {selectedDoc.error || 'Unknown error occurred'}
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  ) : result.fullRepoDocumentation ? (
+                    <div className="flex min-h-full flex-col gap-4 p-4">
+                      <div className="flex flex-wrap items-center justify-between gap-3">
+                        <h2 className="min-w-0 truncate font-mono text-[14px] text-ink-100">
+                          Full Repository Documentation
+                        </h2>
+                        <Badge tone="phosphor">complete overview</Badge>
+                      </div>
+
+                      <DocumentSheet documentation={result.fullRepoDocumentation} />
+                    </div>
+                  ) : (
+                    <EmptyState
+                      glyph="¶"
+                      title="select a file"
+                      hint="Pick a file from the table of contents to view its documentation."
+                    />
+                  )}
+                </div>
               </div>
             </Panel>
           </div>

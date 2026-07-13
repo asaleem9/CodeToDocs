@@ -231,12 +231,12 @@ function History() {
           both columns scroll internally and the page never grows */}
       <div
         data-boot
-        className="grid min-h-0 grid-cols-1 gap-5 lg:h-[calc(100vh-24rem)] lg:min-h-[460px] lg:grid-cols-[380px_1fr]"
+        className="grid min-h-0 grid-cols-1 gap-5 lg:h-[calc(100dvh-24rem)] lg:min-h-[460px] lg:grid-cols-[380px_1fr]"
         style={{ opacity: 0 }}
       >
         <Panel
           title={activeTab === 'public' ? 'GALLERY' : 'DOCUMENTS'}
-          className="min-h-0 min-w-0 max-lg:max-h-[400px]"
+          className={`min-h-0 min-w-0 max-lg:max-h-[400px] ${selectedDoc ? 'max-lg:hidden' : ''}`}
         >
           {isLoading ? (
             <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 p-8">
@@ -290,7 +290,7 @@ function History() {
                 <div
                   key={doc.id}
                   onClick={() => handleSelectDoc(doc)}
-                  className={`group relative cursor-pointer border-b border-l-2 border-b-ink-700/60 px-4 py-3 transition-colors ${
+                  className={`group relative cursor-pointer border-b border-l-2 border-b-ink-700/60 px-4 py-3 pointer-coarse:pr-24 transition-colors ${
                     selectedDoc?.id === doc.id
                       ? 'border-l-phosphor-400 bg-phosphor-400/5'
                       : 'border-l-transparent hover:bg-ink-850'
@@ -325,7 +325,7 @@ function History() {
                   ) : null}
 
                   {activeTab === 'my-docs' && (
-                    <div className="absolute top-1/2 right-3 flex -translate-y-1/2 items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+                    <div className="absolute top-1/2 right-3 flex -translate-y-1/2 items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100 pointer-coarse:opacity-100">
                       <button
                         onClick={(e) => handleToggleVisibility(doc.id, doc.isPublic, e)}
                         title={
@@ -357,10 +357,15 @@ function History() {
         <Panel
           title="DETAIL"
           active={!!selectedDoc}
-          className="min-h-0 min-w-0"
+          className="min-h-0 min-w-0 max-lg:h-[calc(100dvh-14rem)]"
           actions={
             selectedDoc ? (
-              <span className="flex items-center gap-1.5">
+              // 6 actions don't fit one row below lg. The tab bar is absolutely
+              // positioned (Panel.tsx) and sizes to fit this span, so wrapping
+              // would grow it tall enough to cover the content underneath —
+              // cap the width instead and let the rest scroll horizontally,
+              // keeping it the same single-row height as desktop.
+              <span className="flex items-center gap-1.5 max-lg:max-w-[46vw] max-lg:overflow-x-auto">
                 <Link to={`/app/docs/${selectedDoc.id}`} className={buttonClasses('ghost', 'sm')}>
                   open ↗
                 </Link>
@@ -392,41 +397,53 @@ function History() {
           }
         >
           {selectedDoc ? (
-            <div className="min-h-0 flex-1 overflow-y-auto">
-              <div className="flex min-h-full flex-col gap-4 p-4">
-                <div className="flex flex-wrap items-center gap-3">
-                  <h2 className="font-display text-base text-ink-100">
-                    {selectedDoc.type === 'batch'
-                      ? 'Full Repository Documentation'
-                      : 'Generated Documentation'}
-                  </h2>
-                  {selectedDoc.type === 'batch' && selectedDoc.batchInfo && (
-                    <span className="flex items-center gap-2">
-                      <Badge tone="amber">
-                        batch {selectedDoc.batchInfo.successCount}/{selectedDoc.batchInfo.totalFiles}
-                      </Badge>
-                      <span className="font-mono text-[12px] text-ink-400">
-                        {selectedDoc.batchInfo.repoUrl.split('/').slice(-2).join('/')}
+            <div className="flex min-h-0 flex-1 flex-col">
+              {/* drill-in back control — desktop shows both panes side by
+                  side, so this row only exists below lg. pt-16 clears the
+                  floating action-tab bar above it (Panel.tsx), which grows
+                  taller than a plain title on touch — see the actions span
+                  above, capped and scrollable for the same reason. */}
+              <div className="border-b border-ink-700/60 px-2 pt-16 pb-2 lg:hidden">
+                <Button size="sm" variant="ghost" onClick={() => setSelectedDoc(null)}>
+                  ← back
+                </Button>
+              </div>
+              <div className="min-h-0 flex-1 overflow-y-auto">
+                <div className="flex min-h-full flex-col gap-4 p-4">
+                  <div className="flex flex-wrap items-center gap-3">
+                    <h2 className="font-display text-base text-ink-100">
+                      {selectedDoc.type === 'batch'
+                        ? 'Full Repository Documentation'
+                        : 'Generated Documentation'}
+                    </h2>
+                    {selectedDoc.type === 'batch' && selectedDoc.batchInfo && (
+                      <span className="flex items-center gap-2">
+                        <Badge tone="amber">
+                          batch {selectedDoc.batchInfo.successCount}/{selectedDoc.batchInfo.totalFiles}
+                        </Badge>
+                        <span className="font-mono text-[12px] text-ink-400">
+                          {selectedDoc.batchInfo.repoUrl.split('/').slice(-2).join('/')}
+                        </span>
                       </span>
-                    </span>
-                  )}
-                  {selectedDoc.prInfo && (
-                    <span className="flex items-center gap-2">
-                      <Badge tone="phosphor">pr #{selectedDoc.prInfo.prNumber}</Badge>
-                      <span className="font-mono text-[12px] text-ink-400">
-                        {selectedDoc.prInfo.repository}
+                    )}
+                    {selectedDoc.prInfo && (
+                      <span className="flex items-center gap-2">
+                        <Badge tone="phosphor">pr #{selectedDoc.prInfo.prNumber}</Badge>
+                        <span className="font-mono text-[12px] text-ink-400">
+                          {selectedDoc.prInfo.repository}
+                        </span>
                       </span>
-                    </span>
-                  )}
-                </div>
+                    )}
+                  </div>
 
-                <DocumentSheet
-                  documentation={selectedDoc.documentation}
-                  diagram={selectedDoc.diagram}
-                  qualityScore={selectedDoc.qualityScore}
-                  diagramCollapsed={isDiagramCollapsed}
-                  onDiagramToggle={() => setIsDiagramCollapsed(!isDiagramCollapsed)}
-                />
+                  <DocumentSheet
+                    documentation={selectedDoc.documentation}
+                    diagram={selectedDoc.diagram}
+                    qualityScore={selectedDoc.qualityScore}
+                    diagramCollapsed={isDiagramCollapsed}
+                    onDiagramToggle={() => setIsDiagramCollapsed(!isDiagramCollapsed)}
+                  />
+                </div>
               </div>
             </div>
           ) : (

@@ -49,7 +49,7 @@ interface Integration {
 }
 
 const INPUT_CLASSES =
-  'w-full rounded-[2px] border border-ink-700 bg-ink-850 px-3.5 py-2 font-mono text-[13px] text-ink-100 transition-colors placeholder:text-ink-400 hover:border-ink-600 focus:border-phosphor-500 focus:outline-none'
+  'w-full rounded-[2px] border border-ink-700 bg-ink-850 px-3.5 py-2 font-mono text-[13px] max-md:text-[16px] text-ink-100 transition-colors placeholder:text-ink-400 hover:border-ink-600 focus:border-phosphor-500 focus:outline-none'
 
 function Integrations() {
   const location = useLocation()

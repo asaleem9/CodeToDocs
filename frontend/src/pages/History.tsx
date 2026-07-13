@@ -1,11 +1,12 @@
 import { useState, useEffect, useRef } from 'react'
+import { Link } from 'react-router-dom'
 import axios from 'axios'
 import { useGSAP, bootSequence } from '../lib/motion'
 import { getLanguageColor } from '../lib/languages'
 import { docTitle, formatDate } from '../lib/docMeta'
 import DocumentSheet from '../components/DocumentSheet'
 import Panel from '../components/ui/Panel'
-import Button from '../components/ui/Button'
+import Button, { buttonClasses } from '../components/ui/Button'
 import Badge from '../components/ui/Badge'
 import EmptyState from '../components/ui/EmptyState'
 import Spinner from '../components/ui/Spinner'
@@ -118,6 +119,17 @@ function History() {
     try {
       await navigator.clipboard.writeText(selectedDoc.documentation)
       showSuccessToast('Documentation copied to clipboard!')
+    } catch (err) {
+      showErrorToast(err)
+    }
+  }
+
+  const handleShareDocumentation = async () => {
+    if (!selectedDoc) return
+
+    try {
+      await navigator.clipboard.writeText(`${window.location.origin}/app/docs/${selectedDoc.id}`)
+      showSuccessToast('Share link copied to clipboard!')
     } catch (err) {
       showErrorToast(err)
     }
@@ -262,9 +274,17 @@ function History() {
           className="min-h-0 min-w-0"
           actions={
             selectedDoc ? (
-              <Button size="sm" variant="ghost" onClick={handleCopyDocumentation}>
-                copy
-              </Button>
+              <span className="flex items-center gap-1.5">
+                <Link to={`/app/docs/${selectedDoc.id}`} className={buttonClasses('ghost', 'sm')}>
+                  open ↗
+                </Link>
+                <Button size="sm" variant="ghost" onClick={handleShareDocumentation}>
+                  share
+                </Button>
+                <Button size="sm" variant="ghost" onClick={handleCopyDocumentation}>
+                  copy
+                </Button>
+              </span>
             ) : undefined
           }
         >

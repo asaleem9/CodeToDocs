@@ -1,11 +1,13 @@
 import { Router, Request, Response } from 'express';
 import crypto from 'crypto';
-import { generateDocumentation } from '../services/llmService';
+import { generateDocumentation, generatePRDocumentation } from '../services/llmService';
 import { classifyLlmError, LlmErrorKind } from '../services/llmClient';
+import { parsePRUrl, fetchPRData, buildPRPromptInput, PRFetchError, PRFetchErrorKind } from '../services/prService';
 import { documentationStorage } from '../services/storageService';
 import { settingsService } from '../services/settingsService';
+import { tokenStorage } from '../services/tokenStorage';
 import { QualityScore } from '../services/qualityScoreService';
-import { getStorageUserId, canAccessDocument } from '../middleware/auth';
+import { getStorageUserId, getUserId, canAccessDocument } from '../middleware/auth';
 import { rateLimit } from '../middleware/rateLimit';
 
 const router = Router();
@@ -29,12 +31,20 @@ interface GenerateRequest {
   language: string;
 }
 
+interface PRInfo {
+  prNumber: number;
+  repository: string;
+  branch: string;
+  author: string;
+}
+
 interface GenerateResponse {
   id: string;
   documentation: string;
   diagram?: string;
   qualityScore?: QualityScore;
   timestamp: Date;
+  prInfo?: PRInfo;
 }
 
 interface ErrorResponse {
@@ -47,6 +57,10 @@ interface JobProgress {
   status: string;
 }
 
+// A job's error can come from the LLM call or, for PR jobs, from the GitHub
+// fetch that precedes it.
+type JobErrorKind = LlmErrorKind | PRFetchErrorKind;
+
 // Store active documentation generation jobs
 const activeJobs = new Map<string, {
   userId: number;
@@ -54,7 +68,7 @@ const activeJobs = new Map<string, {
   progress: JobProgress;
   result?: GenerateResponse;
   error?: string;
-  errorKind?: LlmErrorKind;
+  errorKind?: JobErrorKind;
   retryable?: boolean;
 }>();
 
@@ -194,6 +208,155 @@ router.post('/generate', generateLimiter, async (req: Request, res: Response) =>
     })();
   } catch (error) {
     console.error('Error in /api/generate endpoint:', error);
+
+    return res.status(500).json({
+      error: 'Internal server error',
+      timestamp: new Date(),
+    } as ErrorResponse);
+  }
+});
+
+/**
+ * POST /api/generate/pr
+ * Generates documentation for a GitHub pull request (with progress tracking).
+ * Uses the same job machinery as /api/generate - polled through the same
+ * /api/generate/progress|result/:jobId routes.
+ * Authentication is optional - if authenticated, the caller's GitHub token is
+ * used for the PR fetch and docs are stored with their userId.
+ */
+router.post('/generate/pr', generateLimiter, async (req: Request, res: Response) => {
+  try {
+    const { prUrl } = req.body as { prUrl: string };
+
+    if (!prUrl || typeof prUrl !== 'string') {
+      return res.status(400).json({
+        error: 'prUrl is required and must be a string',
+        code: 'invalid_pr_url',
+      });
+    }
+
+    const parsed = parsePRUrl(prUrl);
+    if (!parsed) {
+      return res.status(400).json({
+        error: 'Invalid GitHub PR URL. Expected https://github.com/<owner>/<repo>/pull/<number>',
+        code: 'invalid_pr_url',
+      });
+    }
+
+    const userId = getStorageUserId(req);
+    const model = await settingsService.getClaudeModel(userId);
+
+    // If the caller is signed in, use their GitHub token for the PR fetch (same
+    // pattern as /api/batch/start) so it isn't rate-limited and can read private PRs.
+    const githubUserId = getUserId(req);
+    const userToken = githubUserId ? (await tokenStorage.get(githubUserId)) || undefined : undefined;
+
+    const jobId = `job-${crypto.randomBytes(12).toString('hex')}`;
+
+    activeJobs.set(jobId, {
+      userId,
+      createdAt: Date.now(),
+      progress: {
+        percentage: 0,
+        status: 'Initializing...',
+      },
+    });
+
+    res.json({ jobId, message: 'PR documentation generation started' });
+
+    // Process in background
+    (async () => {
+      try {
+        activeJobs.get(jobId)!.progress = {
+          percentage: 15,
+          status: 'Fetching pull request...',
+        };
+
+        const pr = await fetchPRData(parsed.owner, parsed.repo, parsed.number, userToken);
+
+        activeJobs.get(jobId)!.progress = {
+          percentage: 40,
+          status: 'Generating documentation with AI...',
+        };
+
+        const prInput = buildPRPromptInput(pr);
+        const result = await generatePRDocumentation(
+          prInput,
+          {
+            owner: parsed.owner,
+            repo: parsed.repo,
+            number: parsed.number,
+            title: pr.title,
+            author: pr.author,
+            headRef: pr.headRef,
+            baseRef: pr.baseRef,
+          },
+          { model }
+        );
+
+        if (!result.success) {
+          const job = activeJobs.get(jobId)!;
+          job.error = result.error || 'Failed to generate PR documentation';
+          job.errorKind = result.errorKind;
+          job.retryable = result.retryable;
+          return;
+        }
+
+        activeJobs.get(jobId)!.progress = {
+          percentage: 90,
+          status: 'Processing results...',
+        };
+
+        const prInfo: PRInfo = {
+          prNumber: parsed.number,
+          repository: `${parsed.owner}/${parsed.repo}`,
+          branch: pr.headRef,
+          author: pr.author,
+        };
+
+        const id = await documentationStorage.store(
+          userId,
+          result.documentation,
+          '', // code - not applicable for PR docs
+          'pr',
+          result.diagram,
+          result.qualityScore,
+          prInfo,
+          false // isPublic - default to private
+        );
+
+        console.log(`Stored PR documentation: ${id} for user ${userId} (total: ${documentationStorage.getAll().length})`);
+
+        activeJobs.get(jobId)!.progress = {
+          percentage: 100,
+          status: 'Complete',
+        };
+
+        activeJobs.get(jobId)!.result = {
+          id,
+          documentation: result.documentation,
+          diagram: result.diagram,
+          qualityScore: result.qualityScore,
+          timestamp: new Date(),
+          prInfo,
+        };
+      } catch (error: any) {
+        console.error('Error generating PR documentation:', error);
+        const job = activeJobs.get(jobId)!;
+        if (error instanceof PRFetchError) {
+          job.error = error.message;
+          job.errorKind = error.kind;
+          job.retryable = error.kind === 'github_rate_limited';
+        } else {
+          const classified = classifyLlmError(error);
+          job.error = error.message || 'Internal server error';
+          job.errorKind = classified.kind;
+          job.retryable = classified.retryable;
+        }
+      }
+    })();
+  } catch (error) {
+    console.error('Error in /api/generate/pr endpoint:', error);
 
     return res.status(500).json({
       error: 'Internal server error',

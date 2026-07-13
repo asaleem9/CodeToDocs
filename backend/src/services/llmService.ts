@@ -153,6 +153,129 @@ Return ONLY the Mermaid diagram code without any explanation or markdown code bl
   }
 }
 
+export interface PRMetadata {
+  owner: string;
+  repo: string;
+  number: number;
+  title: string;
+  author: string;
+  headRef: string;
+  baseRef: string;
+}
+
+export interface PRDocumentationResult extends DocumentationResult {
+  prMeta?: PRMetadata;
+}
+
+/**
+ * Generates developer documentation for a pull request using Claude AI
+ * @param prInput - The formatted PR diff/context (see prService.buildPRPromptInput)
+ * @param prMeta - PR metadata (title/author/branches) used for prompt context, echoed back on success
+ * @param options.model - Claude model to use; falls back to DEFAULT_MODEL when omitted
+ * @returns Promise<PRDocumentationResult> - The generated documentation and status
+ */
+export async function generatePRDocumentation(
+  prInput: string,
+  prMeta: PRMetadata,
+  options?: { model?: string }
+): Promise<PRDocumentationResult> {
+  try {
+    if (!process.env.ANTHROPIC_API_KEY) {
+      return {
+        documentation: '',
+        success: false,
+        error: 'ANTHROPIC_API_KEY is not configured',
+      };
+    }
+
+    if (!prInput || prInput.trim().length === 0) {
+      return {
+        documentation: '',
+        success: false,
+        error: 'PR input cannot be empty',
+      };
+    }
+
+    const documentationPrompt = `You are an expert technical documentation writer. Generate comprehensive, clear, and professional developer documentation for the following pull request.
+
+PR: "${prMeta.title}" by ${prMeta.author} (${prMeta.headRef} -> ${prMeta.baseRef})
+
+The documentation should include:
+1. Summary: What this PR does and why
+2. Motivation/Context: The problem being solved
+3. Per-File Breakdown: What changed in each significant file
+4. API/Behavior Changes: Any changes to public interfaces or behavior
+5. Migration Notes: Steps needed to adopt this change, if any
+6. Risks/Watch-fors: Edge cases or areas worth extra review
+
+PR diff:
+${prInput}
+
+Please provide well-structured documentation in Markdown format.`;
+
+    const diagramPrompt = `You are an expert at creating Mermaid diagrams. Analyze the following pull request diff and create a Mermaid flowchart visualizing the change - the components it touches and how the change flows through them.
+
+PR diff:
+${prInput}
+
+Return ONLY the Mermaid diagram code without any explanation or markdown code blocks. Start directly with "flowchart TD".`;
+
+    const anthropic = getAnthropicClient();
+
+    const selectedModel = options?.model || DEFAULT_MODEL;
+    console.log(`Using Claude model for PR docs: ${selectedModel}`);
+
+    // Generate documentation and diagram in parallel
+    const [docMessage, diagramMessage] = await Promise.all([
+      anthropic.messages.create({
+        model: selectedModel,
+        max_tokens: 4096,
+        messages: [{ role: 'user', content: documentationPrompt }],
+      }),
+      anthropic.messages.create({
+        model: selectedModel,
+        max_tokens: 2048,
+        messages: [{ role: 'user', content: diagramPrompt }],
+      }),
+    ]);
+
+    const documentation = docMessage.content
+      .filter((block) => block.type === 'text')
+      .map((block) => ('text' in block ? block.text : ''))
+      .join('\n');
+
+    let diagram = diagramMessage.content
+      .filter((block) => block.type === 'text')
+      .map((block) => ('text' in block ? block.text : ''))
+      .join('\n')
+      .trim();
+
+    // Clean up diagram - remove markdown code blocks if present
+    diagram = diagram.replace(/^```mermaid\n/, '').replace(/\n```$/, '').trim();
+
+    const qualityScore = calculateQualityScore(documentation);
+
+    return {
+      documentation,
+      diagram,
+      qualityScore,
+      success: true,
+      prMeta,
+    };
+  } catch (error) {
+    console.error('Error generating PR documentation:', error);
+    const classified = classifyLlmError(error);
+
+    return {
+      documentation: '',
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error occurred',
+      errorKind: classified.kind,
+      retryable: classified.retryable,
+    };
+  }
+}
+
 /**
  * Generates specialized documentation for GraphQL schemas
  * @param schemaString - The GraphQL schema to document

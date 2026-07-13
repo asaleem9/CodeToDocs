@@ -1,4 +1,5 @@
-import { useState, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import { useLocation, useNavigate } from 'react-router-dom'
 import axios from 'axios'
 import { showErrorToast, showSuccessToast, showLoadingToast, dismissToast } from '../utils/errorHandler'
 import { useGSAP, bootSequence } from '../lib/motion'
@@ -51,6 +52,8 @@ const INPUT_CLASSES =
   'w-full rounded-[2px] border border-ink-700 bg-ink-850 px-3.5 py-2 font-mono text-[13px] text-ink-100 transition-colors placeholder:text-ink-400 hover:border-ink-600 focus:border-phosphor-500 focus:outline-none'
 
 function Integrations() {
+  const location = useLocation()
+  const navigate = useNavigate()
   const [config, setConfig] = useState<IntegrationConfig>({})
   const [selectedIntegration, setSelectedIntegration] = useState<string | null>(null)
   const [documentation, setDocumentation] = useState<string>('')
@@ -65,6 +68,18 @@ function Integrations() {
     },
     { scope: scopeRef }
   )
+
+  // Pick up a doc handed off from History/DocView's "send to…" — one-shot,
+  // so clear the nav state right after reading it, or a refresh re-fills the form.
+  useEffect(() => {
+    const handoff = location.state as { title?: string; markdown?: string } | null
+    if (!handoff?.title && !handoff?.markdown) return
+
+    setTitle(handoff.title ?? '')
+    setDocumentation(handoff.markdown ?? '')
+    showSuccessToast('document loaded — pick a destination')
+    navigate(location.pathname, { replace: true, state: null })
+  }, [location.state])
 
   const integrations: Integration[] = [
     {

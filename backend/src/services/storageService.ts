@@ -55,6 +55,20 @@ class DocumentationStorage {
   }
 
   /**
+   * Resolve the DB user row for a storage-scoped user id. Anonymous sessions
+   * use negative ids and never go through OAuth, so they'd have no users row
+   * and their docs would never persist — ensure a synthetic one first. Real
+   * (positive) ids and the legacy `0` sentinel are left alone: real users
+   * already have a row from OAuth, and `0` has never had one.
+   */
+  private async resolveDbUser(userId: number) {
+    if (userId < 0) {
+      await tokenStorageDb.ensureUser(userId, `anon-${Math.abs(userId)}`);
+    }
+    return tokenStorageDb.getUserInfoById(userId);
+  }
+
+  /**
    * Store a documentation entry
    * Returns the generated ID
    */
@@ -121,7 +135,7 @@ class DocumentationStorage {
 
     // Also store in database
     try {
-      const user = await tokenStorageDb.getUserInfoById(userId);
+      const user = await this.resolveDbUser(userId);
       if (user) {
         await storageServiceDb.storeDocumentation(user.githubUsername, {
           documentation,
@@ -207,7 +221,7 @@ class DocumentationStorage {
 
     // Try to get from database
     try {
-      const user = await tokenStorageDb.getUserInfoById(userId);
+      const user = await this.resolveDbUser(userId);
       if (user) {
         const dbDocs = await storageServiceDb.getUserDocumentation(user.githubUsername);
 
@@ -346,7 +360,7 @@ class DocumentationStorage {
     let dbDeleted = false;
     try {
       if (entry) {
-        const user = await tokenStorageDb.getUserInfoById(entry.userId);
+        const user = await this.resolveDbUser(entry.userId);
         if (user) {
           dbDeleted = await storageServiceDb.deleteDocumentation(id, user.githubUsername);
         }
@@ -372,7 +386,7 @@ class DocumentationStorage {
     let dbUpdated = false;
     try {
       if (entry) {
-        const user = await tokenStorageDb.getUserInfoById(entry.userId);
+        const user = await this.resolveDbUser(entry.userId);
         if (user) {
           dbUpdated = await storageServiceDb.updateVisibility(id, user.githubUsername, isPublic);
         }
@@ -460,7 +474,7 @@ class DocumentationStorage {
 
     // Also store in database
     try {
-      const user = await tokenStorageDb.getUserInfoById(userId);
+      const user = await this.resolveDbUser(userId);
       if (user) {
         await storageServiceDb.storeDocumentation(user.githubUsername, {
           documentation: fullRepoDocumentation,

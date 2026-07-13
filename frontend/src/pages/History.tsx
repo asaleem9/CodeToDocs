@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import axios from 'axios'
 import { useGSAP, bootSequence } from '../lib/motion'
 import { getLanguageColor } from '../lib/languages'
@@ -43,6 +43,7 @@ const TABS = [
 ] as const
 
 function History() {
+  const navigate = useNavigate()
   const [docs, setDocs] = useState<StoredDoc[]>([])
   const [selectedDoc, setSelectedDoc] = useState<StoredDoc | null>(null)
   const [isLoading, setIsLoading] = useState(true)
@@ -133,6 +134,14 @@ function History() {
     } catch (err) {
       showErrorToast(err)
     }
+  }
+
+  const handleSendToIntegration = () => {
+    if (!selectedDoc) return
+
+    navigate('/app/integrations', {
+      state: { title: docTitle(selectedDoc), markdown: selectedDoc.documentation },
+    })
   }
 
   return (
@@ -283,6 +292,9 @@ function History() {
                 </Button>
                 <Button size="sm" variant="ghost" onClick={handleCopyDocumentation}>
                   copy
+                </Button>
+                <Button size="sm" variant="ghost" onClick={handleSendToIntegration}>
+                  send to…
                 </Button>
               </span>
             ) : undefined

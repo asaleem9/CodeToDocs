@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { Link, useNavigate, useParams } from 'react-router-dom'
 import axios from 'axios'
 import { useGSAP, bootSequence } from '../lib/motion'
 import { getLanguageColor } from '../lib/languages'
@@ -46,6 +46,7 @@ type ViewState = 'loading' | 'private' | 'not-found' | 'error' | 'loaded'
 // for its owner (everyone else gets the same 403 empty-state, logged in or
 // not — there's nothing to distinguish there).
 function DocView() {
+  const navigate = useNavigate()
   const { id } = useParams<{ id: string }>()
   const [doc, setDoc] = useState<StoredDoc | null>(null)
   const [state, setState] = useState<ViewState>('loading')
@@ -99,6 +100,13 @@ function DocView() {
     }
   }
 
+  const handleSendToIntegration = () => {
+    if (!doc) return
+    navigate('/app/integrations', {
+      state: { title: docTitle(doc), markdown: doc.documentation },
+    })
+  }
+
   return (
     <div
       ref={scopeRef}
@@ -142,6 +150,9 @@ function DocView() {
           <div className="flex items-center gap-1.5">
             <Button size="sm" variant="ghost" onClick={handleShare}>
               share
+            </Button>
+            <Button size="sm" variant="ghost" onClick={handleSendToIntegration}>
+              send to…
             </Button>
             <ExportMenu
               documentation={doc.documentation}

@@ -42,8 +42,11 @@ therefore comes from a **signed bearer token**, not a cookie and not a client-su
 - `backend/src/middleware/auth.ts` is the single source of identity:
   - `getAuthUser(req)` — bearer token first, then `req.session.user`.
   - `getUserId(req)` — numeric GitHub id, or null.
-  - `getStorageUserId(req)` — id used to scope documents; anonymous users get a stable **negative**
-    per-session id (`session.anonId`) so their docs don't collide with others'.
+  - `getStorageUserId(req)` — id used to scope documents; authenticated users get their GitHub id.
+    Anonymous users get a stable **negative** id, preferring a signed anon bearer token
+    (`POST /api/auth/anon`, kept in `localStorage.anon_token`) so it survives cross-site cookie
+    blocking, and falling back to the legacy session-cookie `anonId` for sessions that predate the
+    token or for same-origin/local dev.
   - `requireAuth` — gate for authenticated-only routes.
 - OAuth callback (`routes/auth.ts`) issues the token in the **URL fragment** (`#token=...`), which the
   browser never sends to a server. `frontend/src/main.tsx` reads it into `localStorage.app_token`,
@@ -68,7 +71,8 @@ therefore comes from a **signed bearer token**, not a cookie and not a client-su
   closed in production when `GITHUB_WEBHOOK_SECRET` is unset.
 - **SSRF** (`utils/integrations.ts`): user-supplied outbound URLs go through `assertSafeExternalUrl`
   (https only, private/link-local blocked, Slack host allow-listed, redirects disabled).
-- **Rate limiting** (`middleware/rateLimit.ts`): applied to the LLM endpoints (`/api/generate`, batch).
+- **Rate limiting** (`middleware/rateLimit.ts`): applied to the LLM endpoints (`/api/generate`, batch),
+  plus `/api/integrations/*` and `/api/auth/*`.
 - **Zip uploads**: extracted via the zip-slip guard in `routes/batch.ts` (`safeExtractZip`).
 - **Exports** (`frontend/src/utils/exportUtils.ts`): run `marked` output through DOMPurify and escape
   interpolated metadata before writing HTML/PDF.
@@ -152,15 +156,22 @@ These are environmental, not regressions — keep them in mind when debugging:
 - **Single instance by design.** `activeBatches` / `activeJobs` and express-session's MemoryStore
   are per-instance, so the backend deploys with `--max-instances 1` to keep that state consistent
   (progress/result polling always hits the instance that started the job). Tradeoff: no horizontal
-  scale-out; and a cold start (`--min-instances 0`) still drops in-memory state — in-flight jobs,
-  sessions, and cached OAuth tokens. Moving job/session state to a shared store would lift the cap.
+  scale-out; and a cold start (`--min-instances 0`) still drops in-memory state — in-flight jobs and
+  sessions always, cached OAuth tokens too unless a database is attached (see below). Moving
+  job/session state to a shared store would lift the cap.
 - **Batch GitHub auth.** `fetchRepositoryContents` uses the signed-in user's OAuth token (passed
   from `routes/batch.ts` → `processRepository`), giving 5000 req/hr + private-repo access, and falls
   back to `process.env.GITHUB_TOKEN` if set. Two gaps remain: anonymous batches still use the
   unauthenticated 60 req/hr limit (set a `GITHUB_TOKEN` deployment secret for a global fallback), and
-  because OAuth tokens are in-memory, a returning user must re-auth after a cold start for their
-  token to be available.
-- **In-memory only** (`DATABASE_URL` unset): history and stored OAuth tokens don't survive a restart.
-- **Anonymous persistence is cookie-based.** The document list (`/api/documentation`) scopes by the
-  per-session `anonId` cookie, which Safari/Firefox drop cross-site, so anonymous history can appear
-  empty there. Logged-in history works (bearer token).
+  because no database is attached in prod, a returning user must re-auth after a cold start for their
+  token to be available (a database would let it recover — see below).
+- **In-memory only in production today** (`DATABASE_URL` unset): history and OAuth tokens don't
+  survive a restart. The persistence code supports more than that once a database *is* attached —
+  anonymous docs get a synthetic user row so they persist too (`storageService.ts`), and
+  `tokenStorage.get()` recovers a user's OAuth token from the DB on a cold start even when the
+  in-memory cache is empty (`tokenStorage.ts`) — but none of that is exercised in prod until
+  `DATABASE_URL` is provisioned.
+- **Anonymous identity travels as a signed bearer token** (`POST /api/auth/anon`,
+  `localStorage.anon_token`, 30-day TTL), not just a cookie — this is what fixed anonymous history
+  appearing empty on Safari/Firefox, which block the old per-session `anonId` cookie cross-site. The
+  cookie remains only as a fallback for sessions that predate the token and for same-origin/local dev.

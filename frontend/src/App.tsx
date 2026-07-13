@@ -6,6 +6,7 @@ import Landing from './pages/Landing'
 import Home from './pages/Home'
 import Settings from './pages/Settings'
 import History from './pages/History'
+import DocView from './pages/DocView'
 import Batch from './pages/Batch'
 import PullRequest from './pages/PullRequest'
 import Integrations from './pages/Integrations'
@@ -28,6 +29,7 @@ function AppRoutes() {
           <Route path="pr" element={<PullRequest />} />
           <Route path="integrations" element={<Integrations />} />
           <Route path="history" element={<History />} />
+          <Route path="docs/:id" element={<DocView />} />
           <Route path="github" element={<GitHub />} />
           <Route path="settings" element={<Settings />} />
         </Route>

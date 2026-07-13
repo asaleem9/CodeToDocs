@@ -117,6 +117,16 @@ function Home() {
     }
   }
 
+  const handleShare = async () => {
+    if (!job.result?.id) return
+    try {
+      await navigator.clipboard.writeText(`${window.location.origin}/app/docs/${job.result.id}`)
+      showSuccessToast('Share link copied to clipboard!')
+    } catch (err) {
+      showErrorToast(err)
+    }
+  }
+
   const handleLoadDemo = async (index: number) => {
     const sample = demoSamples[index]
     setCode(sample.code)
@@ -249,6 +259,9 @@ function Home() {
                     qualityScore: job.result.qualityScore?.score,
                   }}
                 />
+                <Button size="sm" variant="ghost" onClick={handleShare} disabled={!job.result.id}>
+                  share
+                </Button>
               </span>
             ) : undefined
           }

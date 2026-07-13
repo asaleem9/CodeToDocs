@@ -1,6 +1,6 @@
 import { Router, Request, Response } from 'express';
 import crypto from 'crypto';
-import { generateDocumentation, generatePRDocumentation } from '../services/llmService';
+import { generateDocumentation, generateDocumentationStream, generatePRDocumentation } from '../services/llmService';
 import { classifyLlmError, LlmErrorKind } from '../services/llmClient';
 import { parsePRUrl, fetchPRData, buildPRPromptInput, PRFetchError, PRFetchErrorKind } from '../services/prService';
 import { documentationStorage } from '../services/storageService';
@@ -66,11 +66,45 @@ const activeJobs = new Map<string, {
   userId: number;
   createdAt: number;
   progress: JobProgress;
+  streamText: string;
+  listeners: Set<Response>;
   result?: GenerateResponse;
   error?: string;
   errorKind?: JobErrorKind;
   retryable?: boolean;
 }>();
+
+/** Writes one SSE event (`event: <name>\ndata: <json>\n\n`) to a stream response. */
+function sendSseEvent(res: Response, event: string, data: unknown): void {
+  res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+}
+
+/**
+ * Updates a job's progress and fans it out to any connected SSE listeners.
+ * The job record itself is the same one the progress poller reads, so this
+ * doesn't change what polling sees - it just adds a push side channel.
+ */
+function updateJobProgress(jobId: string, percentage: number, status: string): void {
+  const job = activeJobs.get(jobId);
+  if (!job) return;
+  job.progress = { percentage, status };
+  for (const listener of job.listeners) {
+    sendSseEvent(listener, 'progress', job.progress);
+  }
+}
+
+/**
+ * Sends the terminal SSE event (done/error) to every listener on a job and
+ * closes their connections. Generation has already finished by the time this
+ * runs, so there's nothing left for a listener to wait on.
+ */
+function closeJobListeners(job: { listeners: Set<Response> }, event: 'done' | 'error', data: unknown): void {
+  for (const listener of job.listeners) {
+    sendSseEvent(listener, event, data);
+    listener.end();
+  }
+  job.listeners.clear();
+}
 
 // Sweep abandoned/errored jobs so the map can't grow without bound (the
 // post-retrieval cleanup only fires on a successful result fetch).
@@ -129,6 +163,8 @@ router.post('/generate', generateLimiter, async (req: Request, res: Response) =>
         percentage: 0,
         status: 'Initializing...',
       },
+      streamText: '',
+      listeners: new Set(),
     });
 
     // Return job ID immediately
@@ -138,22 +174,27 @@ router.post('/generate', generateLimiter, async (req: Request, res: Response) =>
     (async () => {
       try {
         // Update progress: Analyzing code
-        activeJobs.get(jobId)!.progress = {
-          percentage: 20,
-          status: 'Analyzing code structure...',
-        };
+        updateJobProgress(jobId, 20, 'Analyzing code structure...');
 
         // Simulate a small delay for progress visibility
         await new Promise(resolve => setTimeout(resolve, 300));
 
         // Update progress: Generating documentation
-        activeJobs.get(jobId)!.progress = {
-          percentage: 40,
-          status: 'Generating documentation with AI...',
-        };
+        updateJobProgress(jobId, 40, 'Generating documentation with AI...');
 
-        // Call the LLM service
-        const result = await generateDocumentation(code, language, { model });
+        // Call the LLM service, fanning each token delta out to any connected
+        // SSE listeners as it arrives. Generation keeps running even if every
+        // listener disconnects - job.streamText is the durable record.
+        const result = await generateDocumentationStream(code, language, {
+          model,
+          onDelta: (chunk) => {
+            const job = activeJobs.get(jobId)!;
+            job.streamText += chunk;
+            for (const listener of job.listeners) {
+              sendSseEvent(listener, 'delta', { text: chunk });
+            }
+          },
+        });
 
         // Handle service errors
         if (!result.success) {
@@ -161,14 +202,12 @@ router.post('/generate', generateLimiter, async (req: Request, res: Response) =>
           job.error = result.error || 'Failed to generate documentation';
           job.errorKind = result.errorKind;
           job.retryable = result.retryable;
+          closeJobListeners(job, 'error', { error: job.error, errorKind: job.errorKind, retryable: job.retryable });
           return;
         }
 
         // Update progress: Processing results
-        activeJobs.get(jobId)!.progress = {
-          percentage: 90,
-          status: 'Processing results...',
-        };
+        updateJobProgress(jobId, 90, 'Processing results...');
 
         // Store the documentation
         const id = await documentationStorage.store(
@@ -185,18 +224,17 @@ router.post('/generate', generateLimiter, async (req: Request, res: Response) =>
         console.log(`Stored documentation: ${id} for user ${userId} (total: ${documentationStorage.getAll().length})`);
 
         // Complete with result
-        activeJobs.get(jobId)!.progress = {
-          percentage: 100,
-          status: 'Complete',
-        };
+        updateJobProgress(jobId, 100, 'Complete');
 
-        activeJobs.get(jobId)!.result = {
+        const job = activeJobs.get(jobId)!;
+        job.result = {
           id,
           documentation: result.documentation,
           diagram: result.diagram,
           qualityScore: result.qualityScore,
           timestamp: new Date(),
         };
+        closeJobListeners(job, 'done', { result: job.result });
       } catch (error: any) {
         console.error('Error generating documentation:', error);
         const job = activeJobs.get(jobId)!;
@@ -204,6 +242,7 @@ router.post('/generate', generateLimiter, async (req: Request, res: Response) =>
         job.error = error.message || 'Internal server error';
         job.errorKind = classified.kind;
         job.retryable = classified.retryable;
+        closeJobListeners(job, 'error', { error: job.error, errorKind: job.errorKind, retryable: job.retryable });
       }
     })();
   } catch (error) {
@@ -260,6 +299,8 @@ router.post('/generate/pr', generateLimiter, async (req: Request, res: Response)
         percentage: 0,
         status: 'Initializing...',
       },
+      streamText: '',
+      listeners: new Set(),
     });
 
     res.json({ jobId, message: 'PR documentation generation started' });
@@ -419,6 +460,65 @@ router.get('/generate/result/:jobId', (req: Request, res: Response) => {
   }, 60000); // Keep for 1 minute after retrieval
 
   res.json(job.result);
+});
+
+/**
+ * GET /api/generate/stream/:jobId
+ * Streams a generation job's text deltas and progress over SSE, as an additive
+ * view on top of the same job the progress/result pollers read. Generation is
+ * decoupled from this connection - it keeps running in the background job
+ * regardless of whether anyone is listening, so a dropped/reconnected client
+ * never loses text: the initial `snapshot` event always catches it up.
+ * Same access guard as the pollers - anyone without the job id/ownership gets 404,
+ * which the frontend treats as "fall back to polling".
+ */
+router.get('/generate/stream/:jobId', (req: Request, res: Response) => {
+  const { jobId } = req.params;
+
+  const job = activeJobs.get(jobId);
+
+  if (!job || !canAccessJob(job.userId, getStorageUserId(req))) {
+    return res.status(404).json({ error: 'Job not found' });
+  }
+
+  res.set({
+    'Content-Type': 'text/event-stream',
+    'Cache-Control': 'no-cache',
+    Connection: 'keep-alive',
+    'X-Accel-Buffering': 'no', // disable proxy buffering so deltas arrive as they're written
+  });
+  res.flushHeaders();
+
+  sendSseEvent(res, 'snapshot', {
+    progress: job.progress,
+    text: job.streamText,
+    diagram: job.result?.diagram,
+    done: job.result !== undefined,
+    error: job.error,
+  });
+
+  // Job already finished before the client connected - send the terminal
+  // event and close, same as a normal completion.
+  if (job.result) {
+    sendSseEvent(res, 'done', { result: job.result });
+    return res.end();
+  }
+  if (job.error) {
+    sendSseEvent(res, 'error', { error: job.error, errorKind: job.errorKind, retryable: job.retryable });
+    return res.end();
+  }
+
+  job.listeners.add(res);
+
+  // Cloud Run drops idle connections; a comment ping keeps this one open.
+  const heartbeat = setInterval(() => {
+    res.write(': ping\n\n');
+  }, 15000);
+
+  req.on('close', () => {
+    clearInterval(heartbeat);
+    job.listeners.delete(res);
+  });
 });
 
 /**

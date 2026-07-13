@@ -153,6 +153,148 @@ Return ONLY the Mermaid diagram code without any explanation or markdown code bl
   }
 }
 
+/**
+ * Same as generateDocumentation, but streams the documentation text as it's
+ * generated instead of waiting for the full response. The diagram is still a
+ * single non-streamed call, run in parallel with the doc stream. Callers get
+ * the identical DocumentationResult shape once both finish - onDelta is purely
+ * a side channel for progress, not the source of truth for the final text.
+ * @param options.onDelta - invoked with each text chunk as Claude streams the docs
+ */
+export async function generateDocumentationStream(
+  code: string,
+  language: string,
+  options: { model?: string; onDelta: (chunk: string) => void }
+): Promise<DocumentationResult> {
+  try {
+    // Validate API key
+    if (!process.env.ANTHROPIC_API_KEY) {
+      return {
+        documentation: '',
+        success: false,
+        error: 'ANTHROPIC_API_KEY is not configured',
+      };
+    }
+
+    // Validate inputs
+    if (!code || code.trim().length === 0) {
+      return {
+        documentation: '',
+        success: false,
+        error: 'Code cannot be empty',
+      };
+    }
+
+    // GraphQL schemas are parsed locally rather than sent to Claude, so there's
+    // nothing to stream - hand back the full doc as a single delta.
+    if (language.toLowerCase() === 'graphql') {
+      const result = await generateGraphQLDocumentation(code);
+      if (result.success) {
+        options.onDelta(result.documentation);
+      }
+      return result;
+    }
+
+    const documentationPrompt = `You are an expert technical documentation writer. Generate comprehensive, clear, and professional developer documentation for the following ${language} code.
+
+The documentation should include:
+1. Overview: A brief description of what the code does
+2. Key Components: Main functions, classes, or modules
+3. Parameters/Inputs: Description of any inputs or parameters
+4. Return Values/Outputs: What the code returns or produces
+5. Usage Examples: How to use the code with practical examples
+6. Dependencies: Any external libraries or requirements
+7. Notes: Any important considerations, edge cases, or best practices
+
+Code to document:
+\`\`\`${language}
+${code}
+\`\`\`
+
+Please provide well-structured documentation in Markdown format.`;
+
+    const diagramPrompt = `You are an expert at creating Mermaid diagrams. Analyze the following ${language} code and create a Mermaid diagram that visualizes its structure.
+
+For object-oriented code with classes:
+- Use a class diagram showing class relationships, inheritance, and composition
+- Include key methods and properties
+
+For functional code:
+- Use a flowchart showing the main function flow and logic
+- Show decision points and data transformations
+
+For modules/APIs:
+- Use a graph showing component relationships and dependencies
+
+Code to analyze:
+\`\`\`${language}
+${code}
+\`\`\`
+
+Return ONLY the Mermaid diagram code without any explanation or markdown code blocks. Start directly with the diagram type (e.g., "classDiagram", "flowchart TD", "graph LR", etc.).`;
+
+    const anthropic = getAnthropicClient();
+
+    const selectedModel = options.model || DEFAULT_MODEL;
+    console.log(`Using Claude model: ${selectedModel}`);
+
+    // Diagram runs as a plain call alongside the streamed doc request.
+    const diagramPromise = anthropic.messages.create({
+      model: selectedModel,
+      max_tokens: 2048,
+      messages: [{ role: 'user', content: diagramPrompt }],
+    });
+
+    const docStream = anthropic.messages.stream({
+      model: selectedModel,
+      max_tokens: 4096,
+      messages: [{ role: 'user', content: documentationPrompt }],
+    });
+    docStream.on('text', (textDelta) => options.onDelta(textDelta));
+
+    const [docMessage, diagramMessage] = await Promise.all([
+      docStream.finalMessage(),
+      diagramPromise,
+    ]);
+
+    // Extract the text content from the responses
+    const documentation = docMessage.content
+      .filter((block) => block.type === 'text')
+      .map((block) => ('text' in block ? block.text : ''))
+      .join('\n');
+
+    let diagram = diagramMessage.content
+      .filter((block) => block.type === 'text')
+      .map((block) => ('text' in block ? block.text : ''))
+      .join('\n')
+      .trim();
+
+    // Clean up diagram - remove markdown code blocks if present
+    diagram = diagram.replace(/^```mermaid\n/, '').replace(/\n```$/, '').trim();
+
+    // Calculate quality score
+    const qualityScore = calculateQualityScore(documentation);
+
+    return {
+      documentation,
+      diagram,
+      qualityScore,
+      success: true,
+    };
+  } catch (error) {
+    console.error('Error generating documentation (stream):', error);
+    const classified = classifyLlmError(error);
+
+    return {
+      documentation: '',
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error occurred',
+      errorKind: classified.kind,
+      retryable: classified.retryable,
+    };
+  }
+}
+
 export interface PRMetadata {
   owner: string;
   repo: string;

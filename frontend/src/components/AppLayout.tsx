@@ -11,6 +11,7 @@ import { buttonClasses } from './ui/Button'
 const NAV_ITEMS = [
   { to: '/app', label: '/home' },
   { to: '/app/batch', label: '/batch' },
+  { to: '/app/pr', label: '/pr' },
   { to: '/app/integrations', label: '/integrations' },
   { to: '/app/history', label: '/history' },
   { to: '/app/github', label: '/github' },

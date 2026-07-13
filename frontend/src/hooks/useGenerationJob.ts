@@ -9,6 +9,15 @@ export interface GenerationResult {
   documentation: string
   diagram?: string
   qualityScore?: QualityScoreData
+  /** Present when the backend stored the doc (currently the PR flow) — powers the share link. */
+  id?: string
+  /** Present for PR-doc jobs. */
+  prInfo?: {
+    prNumber: number
+    repository: string
+    branch: string
+    author: string
+  }
 }
 
 export interface GenerationError {
@@ -87,6 +96,8 @@ export function useGenerationJob() {
             documentation: resultResponse.data.documentation,
             diagram: resultResponse.data.diagram,
             qualityScore: resultResponse.data.qualityScore,
+            id: resultResponse.data.id,
+            prInfo: resultResponse.data.prInfo,
           })
           showSuccessToast('Documentation generated successfully!')
           setPhase('done')

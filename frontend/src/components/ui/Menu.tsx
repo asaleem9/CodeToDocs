@@ -21,15 +21,15 @@ function Menu({ open, onClose, align = 'left', className = '', children }: MenuP
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose()
     }
-    const onClick = (e: MouseEvent) => {
+    const onClick = (e: PointerEvent) => {
       const wrapper = ref.current?.parentElement
       if (wrapper && !wrapper.contains(e.target as Node)) onClose()
     }
     document.addEventListener('keydown', onKey)
-    document.addEventListener('mousedown', onClick)
+    document.addEventListener('pointerdown', onClick)
     return () => {
       document.removeEventListener('keydown', onKey)
-      document.removeEventListener('mousedown', onClick)
+      document.removeEventListener('pointerdown', onClick)
     }
   }, [open, onClose])
 
@@ -49,7 +49,7 @@ function Menu({ open, onClose, align = 'left', className = '', children }: MenuP
     <div
       ref={ref}
       role="menu"
-      className={`absolute top-[calc(100%+0.5rem)] z-50 min-w-56 border border-ink-700 bg-ink-900 p-1.5 shadow-[0_16px_40px_rgba(0,0,0,0.5)] ${
+      className={`absolute top-[calc(100%+0.5rem)] z-50 min-w-56 max-w-[calc(100vw-2rem)] border border-ink-700 bg-ink-900 p-1.5 shadow-[0_16px_40px_rgba(0,0,0,0.5)] ${
         align === 'right' ? 'right-0' : 'left-0'
       } ${className}`}
     >

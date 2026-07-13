@@ -46,6 +46,7 @@ function Home() {
   const [pendingDemo, setPendingDemo] = useState<typeof demoSamples[0] | null>(null)
   const [isDiagramCollapsed, setIsDiagramCollapsed] = useState<boolean>(false)
   const scopeRef = useRef<HTMLDivElement>(null)
+  const outputRef = useRef<HTMLDivElement>(null)
 
   const job = useGenerationJob()
   const isLoading = job.phase === 'submitting' || job.phase === 'running'
@@ -81,6 +82,15 @@ function Home() {
     },
     { dependencies: [job.result], scope: scopeRef }
   )
+
+  // below the two-pane breakpoint the output panel sits under the fold —
+  // bring it into view so the printout animation isn't wasted off-screen
+  useEffect(() => {
+    if (!job.result) return
+    if (window.matchMedia('(max-width: 1023px)').matches) {
+      outputRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }
+  }, [job.result])
 
   const handleGenerateDocumentation = async () => {
     if (!code.trim()) {
@@ -181,7 +191,7 @@ function Home() {
           <select
             value={language}
             onChange={(e) => setLanguage(e.target.value)}
-            className="cursor-pointer appearance-none rounded-[2px] border border-ink-700 bg-ink-850 py-2 pr-9 pl-4 font-mono text-[13.5px] text-ink-100 transition-colors hover:border-ink-600 focus:border-phosphor-500 focus:outline-none"
+            className="cursor-pointer appearance-none rounded-[2px] border border-ink-700 bg-ink-850 py-2 pr-9 pl-4 font-mono text-[13.5px] text-ink-100 transition-colors hover:border-ink-600 focus:border-phosphor-500 focus:outline-none max-md:text-[16px]"
           >
             {LANGUAGES.map((lang) => (
               <option key={lang} value={lang}>
@@ -229,6 +239,7 @@ function Home() {
       <div data-boot className="grid min-h-0 flex-1 gap-5 lg:grid-cols-2" style={{ opacity: 0 }}>
         <Panel
           title="CODE INPUT"
+          className="min-w-0"
           actions={
             <span className={`font-mono text-[11px] ${sizeColorClass}`}>
               {formatCodeSize(codeSize)} / {CODE_LIMIT / 1000} KB
@@ -236,7 +247,7 @@ function Home() {
           }
         >
           <textarea
-            className="min-h-[420px] w-full flex-1 resize-none bg-ink-950/60 p-5 font-mono text-[13.5px] leading-relaxed text-ink-100 placeholder:text-ink-400 focus:outline-none"
+            className="min-h-[40svh] w-full flex-1 resize-none bg-ink-950/60 p-5 font-mono text-[13.5px] leading-relaxed text-ink-100 placeholder:text-ink-400 focus:outline-none max-md:text-[16px] lg:min-h-[420px]"
             value={code}
             onChange={(e) => setCode(e.target.value)}
             placeholder={`Paste your ${language} code here…`}
@@ -259,6 +270,7 @@ function Home() {
 
         <Panel
           title="OUTPUT"
+          className="min-w-0"
           active={isLoading || !!job.result}
           actions={
             job.result ? (
@@ -281,7 +293,7 @@ function Home() {
             ) : undefined
           }
         >
-          <div className="min-h-0 flex-1 overflow-y-auto">
+          <div ref={outputRef} className="min-h-0 flex-1 overflow-y-auto">
             {job.result ? (
               <div className="flex min-h-full flex-col gap-4 p-4">
                 <DocumentSheet

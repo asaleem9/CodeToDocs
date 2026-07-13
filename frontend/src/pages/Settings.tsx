@@ -2,13 +2,11 @@ import { useState, useEffect, useRef } from 'react'
 import axios from 'axios'
 import { showErrorToast, showSuccessToast, showLoadingToast, dismissToast } from '../utils/errorHandler'
 import config from '../config'
+import { useAuth } from '../contexts/AuthContext'
 import { useGSAP, bootSequence } from '../lib/motion'
 import Panel from '../components/ui/Panel'
 import Button from '../components/ui/Button'
-import Badge from '../components/ui/Badge'
 import SectionHeader from '../components/ui/SectionHeader'
-
-type ClaudeModel = 'claude-sonnet-4-20250514' | 'claude-haiku-4-5-20251001' | 'claude-3-5-haiku-20241022'
 
 interface WebhookStatus {
   lastTrigger: string | null
@@ -25,39 +23,13 @@ interface WebhookStatus {
 }
 
 interface ModelOption {
-  value: ClaudeModel
-  name: string
-  badges: Array<{ label: string; tone: 'neutral' | 'phosphor' | 'amber' }>
-  description: string
-  specs: string[]
+  id: string
+  label: string
 }
 
-const MODEL_OPTIONS: ModelOption[] = [
-  {
-    value: 'claude-haiku-4-5-20251001',
-    name: 'Claude Haiku 4.5',
-    badges: [
-      { label: 'new', tone: 'neutral' },
-      { label: 'recommended', tone: 'phosphor' },
-    ],
-    description: 'Sonnet-4-level coding performance at one-third the cost and twice the speed',
-    specs: ['2x faster than Sonnet', '1/3 the cost', 'Frontier performance'],
-  },
-  {
-    value: 'claude-sonnet-4-20250514',
-    name: 'Claude Sonnet 4.5',
-    badges: [{ label: 'advanced', tone: 'amber' }],
-    description: 'Maximum intelligence for the most complex codebases',
-    specs: ['Highest intelligence', 'Complex analysis', 'Higher cost'],
-  },
-  {
-    value: 'claude-3-5-haiku-20241022',
-    name: 'Claude 3.5 Haiku',
-    badges: [{ label: 'legacy', tone: 'neutral' }],
-    description: 'Previous generation model for basic documentation tasks',
-    specs: ['Fast response', 'Low cost', 'Good quality'],
-  },
-]
+// Used only if GET /api/settings/models fails, so the page still renders a
+// working (if minimal) model choice.
+const FALLBACK_MODELS: ModelOption[] = [{ id: 'claude-haiku-4-5-20251001', label: 'Claude Haiku 4.5' }]
 
 const EVENT_DOT: Record<'received' | 'processed' | 'error', string> = {
   received: 'text-amber',
@@ -72,7 +44,9 @@ const EVENT_VERB: Record<'received' | 'processed' | 'error', string> = {
 }
 
 function Settings() {
-  const [claudeModel, setClaudeModel] = useState<ClaudeModel>('claude-haiku-4-5-20251001')
+  const { isAuthenticated } = useAuth()
+  const [claudeModel, setClaudeModel] = useState<string>(FALLBACK_MODELS[0].id)
+  const [modelOptions, setModelOptions] = useState<ModelOption[]>(FALLBACK_MODELS)
   const [webhookStatus, setWebhookStatus] = useState<WebhookStatus | null>(null)
   const [isSaving, setIsSaving] = useState<boolean>(false)
   const webhookUrl = `${config.apiUrl}/api/webhook/github`
@@ -88,7 +62,24 @@ function Settings() {
 
   // Load settings from the backend on mount
   useEffect(() => {
-    // Fetch model preference from backend
+    // Fetch the models a user may choose from, and default-select the
+    // backend's default. Falls back to FALLBACK_MODELS (already in state)
+    // if the endpoint is unreachable, so the page still renders.
+    const fetchModels = async () => {
+      try {
+        const response = await axios.get('/api/settings/models')
+        if (Array.isArray(response.data.models) && response.data.models.length > 0) {
+          setModelOptions(response.data.models)
+          setClaudeModel(response.data.default ?? response.data.models[0].id)
+        }
+      } catch (error) {
+        console.error('Error fetching available models:', error)
+      }
+    }
+
+    // Fetch the user's saved model preference (works for anonymous users too,
+    // returning the default) - runs after fetchModels so it can override the
+    // default with whatever's actually saved.
     const fetchModelPreference = async () => {
       try {
         const response = await axios.get('/api/settings/model')
@@ -110,7 +101,7 @@ function Settings() {
       }
     }
 
-    fetchModelPreference()
+    fetchModels().then(fetchModelPreference)
     fetchWebhookStatus()
 
     // Refresh webhook status every 10 seconds
@@ -165,20 +156,20 @@ function Settings() {
         </p>
 
         <div className="flex flex-col gap-3">
-          {MODEL_OPTIONS.map((option) => {
-            const checked = claudeModel === option.value
+          {modelOptions.map((option) => {
+            const checked = claudeModel === option.id
             return (
-              <label key={option.value} className="block cursor-pointer">
+              <label key={option.id} className="block cursor-pointer">
                 <input
                   type="radio"
                   name="claudeModel"
-                  value={option.value}
+                  value={option.id}
                   checked={checked}
-                  onChange={(e) => setClaudeModel(e.target.value as ClaudeModel)}
+                  onChange={(e) => setClaudeModel(e.target.value)}
                   className="sr-only"
                 />
                 <Panel active={checked}>
-                  <div className="flex gap-3 p-4">
+                  <div className="flex items-center gap-3 p-4">
                     <span
                       aria-hidden
                       className={`shrink-0 font-mono text-[13px] leading-6 ${
@@ -187,28 +178,19 @@ function Settings() {
                     >
                       {checked ? '[■]' : '[ ]'}
                     </span>
-                    <div className="flex min-w-0 flex-col gap-1.5">
-                      <div className="flex flex-wrap items-center gap-2.5">
-                        <span className="font-mono text-[14px] font-semibold text-ink-100">
-                          {option.name}
-                        </span>
-                        {option.badges.map((badge) => (
-                          <Badge key={badge.label} tone={badge.tone}>
-                            {badge.label}
-                          </Badge>
-                        ))}
-                      </div>
-                      <p className="font-sans text-[13px] text-ink-300">{option.description}</p>
-                      <span className="font-mono text-[11px] text-ink-400">
-                        {option.specs.join(' · ')}
-                      </span>
-                    </div>
+                    <span className="font-mono text-[14px] font-semibold text-ink-100">
+                      {option.label}
+                    </span>
                   </div>
                 </Panel>
               </label>
             )
           })}
         </div>
+
+        {!isAuthenticated && (
+          <p className="font-mono text-[12px] text-ink-400">log in to save your model preference</p>
+        )}
       </section>
 
       {/* webhook */}

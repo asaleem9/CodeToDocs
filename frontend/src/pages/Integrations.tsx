@@ -96,6 +96,7 @@ function Integrations() {
       name: 'GitHub Wiki',
       icon: 'G',
       description: 'Sync to GitHub repository wiki',
+      comingSoon: true,
       fields: [
         { key: 'token', label: 'GitHub Token', type: 'password', required: true },
         { key: 'owner', label: 'Repository Owner', type: 'text', required: true },
@@ -135,6 +136,15 @@ function Integrations() {
   }
 
   const handleExport = async (integrationId: string) => {
+    if (integrations.find((i) => i.id === integrationId)?.comingSoon) {
+      showErrorToast({
+        response: {
+          data: { error: 'This integration is not available yet' },
+        },
+      })
+      return
+    }
+
     if (!documentation.trim()) {
       showErrorToast({
         response: {

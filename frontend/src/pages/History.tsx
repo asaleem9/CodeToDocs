@@ -1,10 +1,11 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import axios from 'axios'
 import { useGSAP, bootSequence } from '../lib/motion'
 import { getLanguageColor } from '../lib/languages'
 import { docTitle, formatDate } from '../lib/docMeta'
 import DocumentSheet from '../components/DocumentSheet'
+import ExportMenu from '../components/ExportMenu'
 import Panel from '../components/ui/Panel'
 import Button, { buttonClasses } from '../components/ui/Button'
 import Badge from '../components/ui/Badge'
@@ -21,6 +22,10 @@ interface StoredDoc {
   code: string
   language: string
   createdAt: string // Backend uses createdAt, not generatedAt
+  // docMeta's DocTitleSource only declares 'single' | 'batch', but the
+  // backend also writes 'pr' (backend/src/services/storageService.ts) — cast
+  // to RawDocType where we need to distinguish it, rather than widen this
+  // field and break docTitle()'s param type.
   type?: 'single' | 'batch'
   isPublic?: boolean
   batchInfo?: {
@@ -42,6 +47,21 @@ const TABS = [
   { id: 'public', label: 'PUBLIC GALLERY' },
 ] as const
 
+// 'single' is the backend's literal for a one-off manual generation — label
+// it "manual" here since that's what it means from the list.
+const TYPE_FILTERS = [
+  { id: 'all', label: 'all' },
+  { id: 'single', label: 'manual' },
+  { id: 'batch', label: 'batch' },
+  { id: 'pr', label: 'pr' },
+] as const
+
+type TypeFilter = (typeof TYPE_FILTERS)[number]['id']
+type RawDocType = 'single' | 'batch' | 'pr'
+
+const SEARCH_INPUT_CLASSES =
+  'w-full rounded-[2px] border border-ink-700 bg-ink-850 px-3.5 py-2 font-mono text-[13px] text-ink-100 transition-colors placeholder:text-ink-400 hover:border-ink-600 focus:border-phosphor-500 focus:outline-none'
+
 function History() {
   const navigate = useNavigate()
   const [docs, setDocs] = useState<StoredDoc[]>([])
@@ -49,7 +69,22 @@ function History() {
   const [isLoading, setIsLoading] = useState(true)
   const [activeTab, setActiveTab] = useState<'my-docs' | 'public'>('my-docs')
   const [isDiagramCollapsed, setIsDiagramCollapsed] = useState<boolean>(false)
+  const [searchQuery, setSearchQuery] = useState<string>('')
+  const [typeFilter, setTypeFilter] = useState<TypeFilter>('all')
   const scopeRef = useRef<HTMLDivElement>(null)
+
+  // client-side search + type filter over the already-loaded docs for the
+  // active tab — no backend round-trip
+  const filteredDocs = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase()
+    return docs.filter((doc) => {
+      const docType = (doc.type as RawDocType | undefined) ?? 'single'
+      if (typeFilter !== 'all' && docType !== typeFilter) return false
+      if (!query) return true
+      const haystack = `${docTitle(doc)} ${doc.language} ${docType}`.toLowerCase()
+      return haystack.includes(query)
+    })
+  }, [docs, searchQuery, typeFilter])
 
   // page boot-in
   useGSAP(
@@ -144,6 +179,14 @@ function History() {
     })
   }
 
+  const handleRegenerate = () => {
+    if (!selectedDoc?.code) return
+
+    navigate('/app', {
+      state: { code: selectedDoc.code, language: selectedDoc.language },
+    })
+  }
+
   return (
     <div
       ref={scopeRef}
@@ -161,7 +204,8 @@ function History() {
         </div>
         {!isLoading && docs.length > 0 && (
           <span className="font-mono text-[13px] text-ink-300">
-            {docs.length} {activeTab === 'public' ? 'public documents' : 'documents'}
+            {filteredDocs.length}/{docs.length}{' '}
+            {activeTab === 'public' ? 'public documents' : 'documents'}
           </span>
         )}
       </header>
@@ -210,8 +254,39 @@ function History() {
               }
             />
           ) : (
-            <div className="min-h-0 flex-1 overflow-y-auto">
-              {docs.map((doc) => (
+            <div className="flex min-h-0 flex-1 flex-col">
+              <div className="flex flex-col gap-2 border-b border-ink-700/60 p-3">
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="search documents…"
+                  className={SEARCH_INPUT_CLASSES}
+                />
+                <div className="flex flex-wrap gap-1.5">
+                  {TYPE_FILTERS.map((filter) => (
+                    <Button
+                      key={filter.id}
+                      size="sm"
+                      variant={typeFilter === filter.id ? 'primary' : 'ghost'}
+                      onClick={() => setTypeFilter(filter.id)}
+                    >
+                      [{filter.label}]
+                    </Button>
+                  ))}
+                </div>
+              </div>
+
+              {filteredDocs.length === 0 ? (
+                <EmptyState
+                  glyph="⌕"
+                  title="no matches"
+                  hint="Try a different search term or type filter."
+                  className="flex-1"
+                />
+              ) : (
+              <div className="min-h-0 flex-1 overflow-y-auto">
+              {filteredDocs.map((doc) => (
                 <div
                   key={doc.id}
                   onClick={() => handleSelectDoc(doc)}
@@ -273,6 +348,8 @@ function History() {
                   )}
                 </div>
               ))}
+              </div>
+              )}
             </div>
           )}
         </Panel>
@@ -296,6 +373,20 @@ function History() {
                 <Button size="sm" variant="ghost" onClick={handleSendToIntegration}>
                   send to…
                 </Button>
+                <ExportMenu
+                  documentation={selectedDoc.documentation}
+                  metadata={{
+                    language: selectedDoc.language,
+                    generatedAt: new Date(selectedDoc.createdAt),
+                    qualityScore: selectedDoc.qualityScore?.score,
+                    prInfo: selectedDoc.prInfo,
+                  }}
+                />
+                {selectedDoc.code && (
+                  <Button size="sm" variant="ghost" onClick={handleRegenerate}>
+                    regen
+                  </Button>
+                )}
               </span>
             ) : undefined
           }

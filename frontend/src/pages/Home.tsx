@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { gsap, useGSAP, bootSequence, prefersReducedMotion } from '../lib/motion'
 import DocumentSheet from '../components/DocumentSheet'
 import ExportMenu from '../components/ExportMenu'
@@ -38,6 +38,8 @@ function formatCodeSize(chars: number): string {
 }
 
 function Home() {
+  const location = useLocation()
+  const navigate = useNavigate()
   const [code, setCode] = useState<string>('')
   const [language, setLanguage] = useState<string>('javascript')
   const [showDemoMenu, setShowDemoMenu] = useState<boolean>(false)
@@ -100,6 +102,19 @@ function Home() {
       handleGenerateDocumentation()
     }
   }, [code, pendingDemo])
+
+  // Pick up a regenerate handoff from History — one-shot, so clear the nav
+  // state right after reading it, or a refresh re-fills the form. Pre-fill
+  // only; the user reviews and clicks generate themselves (rate limits).
+  useEffect(() => {
+    const handoff = location.state as { code?: string; language?: string } | null
+    if (!handoff?.code) return
+
+    setCode(handoff.code)
+    if (handoff.language) setLanguage(handoff.language)
+    showSuccessToast('code loaded — review and generate')
+    navigate(location.pathname, { replace: true, state: null })
+  }, [location.state])
 
   const handleClear = () => {
     setCode('')

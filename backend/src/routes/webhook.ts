@@ -4,6 +4,7 @@ import { generateDocumentation } from '../services/llmService';
 import { documentationStorage } from '../services/storageService';
 import { tokenStorage } from '../services/tokenStorage';
 import { settingsService } from '../services/settingsService';
+import { requireAuth } from '../middleware/auth';
 
 const router = Router();
 
@@ -237,21 +238,11 @@ router.post('/github', async (req: Request, res: Response) => {
 
 /**
  * GET /api/webhook/status
- * Get webhook status and recent events
+ * Get webhook status and recent events. Requires auth - recentEvents leaks
+ * repo/PR names, which anonymous callers shouldn't be able to enumerate.
  */
-router.get('/status', (req: Request, res: Response) => {
+router.get('/status', requireAuth, (req: Request, res: Response) => {
   res.json(webhookStatus);
-});
-
-/**
- * GET /api/webhook/queue
- * Get current PR queue (for debugging/monitoring)
- */
-router.get('/queue', (req: Request, res: Response) => {
-  res.json({
-    queueSize: prQueue.length,
-    prs: prQueue,
-  });
 });
 
 /**
@@ -588,5 +579,4 @@ async function processPRFiles(prData: PRData): Promise<void> {
   }
 }
 
-export { prQueue };
 export default router;

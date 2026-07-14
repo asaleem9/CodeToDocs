@@ -20,7 +20,7 @@ export function parseError(error: any): ErrorResponse {
   }
 
   // Timeout errors
-  if (error.code === 'ECONNABORTED' || error.message.includes('timeout')) {
+  if (error.code === 'ECONNABORTED' || error.message?.includes('timeout')) {
     return {
       message: error.message,
       userMessage: 'The request took too long to complete',

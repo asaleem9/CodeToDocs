@@ -3,6 +3,8 @@ import { promisify } from 'util';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import { generateDocumentation } from '../services/llmService';
+import { getAnthropicClient, classifyLlmError, LlmErrorKind } from '../services/llmClient';
+import { DEFAULT_MODEL } from '../services/settingsService';
 
 const execAsync = promisify(exec);
 
@@ -29,6 +31,8 @@ export interface DocumentedFile {
   qualityScore?: any;
   success: boolean;
   error?: string;
+  errorKind?: LlmErrorKind;
+  retryable?: boolean;
 }
 
 export interface BatchResult {
@@ -306,7 +310,8 @@ function getLanguageFromExtension(ext: string): string {
 export async function processBatch(
   files: FileToDocument[],
   onProgress?: (progress: BatchProgress) => void,
-  onFileComplete?: (doc: DocumentedFile) => void
+  onFileComplete?: (doc: DocumentedFile) => void,
+  model?: string
 ): Promise<DocumentedFile[]> {
   const results: DocumentedFile[] = [];
   let completed = 0;
@@ -336,7 +341,7 @@ export async function processBatch(
 
           console.log(`[${completed + 1}/${files.length}] Processing ${file.path}...`);
 
-          const result = await generateDocumentation(file.content, file.language);
+          const result = await generateDocumentation(file.content, file.language, { model });
 
           const docResult: DocumentedFile = {
             filePath: file.path,
@@ -346,6 +351,8 @@ export async function processBatch(
             qualityScore: result.qualityScore,
             success: result.success,
             error: result.error,
+            errorKind: result.errorKind,
+            retryable: result.retryable,
           };
 
           if (!result.success) {
@@ -357,6 +364,7 @@ export async function processBatch(
           return docResult;
         } catch (error: any) {
           console.error(`✗ Error processing ${file.path}:`, error.message);
+          const classified = classifyLlmError(error);
 
           return {
             filePath: file.path,
@@ -364,6 +372,8 @@ export async function processBatch(
             documentation: '',
             success: false,
             error: error.message,
+            errorKind: classified.kind,
+            retryable: classified.retryable,
           };
         }
       })
@@ -523,17 +533,8 @@ export async function cleanupTempDir(dir: string): Promise<void> {
  * Generate comprehensive full-repository documentation
  * This aggregates all individual file docs into a cohesive overview
  */
-export async function generateFullRepoDocumentation(result: BatchResult): Promise<string> {
-  const Anthropic = (await import('@anthropic-ai/sdk')).default;
-  const { settingsService } = await import('../services/settingsService');
-
-  // Get Anthropic API key
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) {
-    throw new Error('ANTHROPIC_API_KEY is not configured');
-  }
-
-  const anthropic = new Anthropic({ apiKey });
+export async function generateFullRepoDocumentation(result: BatchResult, model?: string): Promise<string> {
+  const anthropic = getAnthropicClient();
 
   // Prepare a comprehensive context about the repository
   const repoName = result.repoUrl.split('/').pop() || 'Repository';
@@ -602,8 +603,7 @@ Provide the documentation in well-structured Markdown format.`;
   try {
     console.log('Generating full repository documentation with Claude...');
 
-    // Get selected model from settings
-    const selectedModel = settingsService.getClaudeModel();
+    const selectedModel = model || DEFAULT_MODEL;
     console.log(`Using Claude model for full repo doc: ${selectedModel}`);
 
     const response = await anthropic.messages.create({
@@ -626,7 +626,11 @@ Provide the documentation in well-structured Markdown format.`;
     throw new Error('Unexpected response format from Claude');
   } catch (error: any) {
     console.error('Error generating full repo documentation:', error);
-    throw new Error(`Failed to generate full repository documentation: ${error.message}`);
+    const classified = classifyLlmError(error);
+    const wrappedError: any = new Error(`Failed to generate full repository documentation: ${error.message}`);
+    wrappedError.errorKind = classified.kind;
+    wrappedError.retryable = classified.retryable;
+    throw wrappedError;
   }
 }
 
@@ -642,7 +646,8 @@ export async function processRepository(
   } = {},
   onProgress?: (progress: BatchProgress) => void,
   onFileComplete?: (doc: DocumentedFile) => void,
-  token?: string
+  token?: string,
+  model?: string
 ): Promise<BatchResult> {
   try {
     console.log(`Starting batch processing for: ${repoUrl}`);
@@ -658,7 +663,7 @@ export async function processRepository(
     console.log(`Found ${files.length} files to document`);
 
     // Process files
-    const documents = await processBatch(files, onProgress, onFileComplete);
+    const documents = await processBatch(files, onProgress, onFileComplete, model);
 
     // Generate table of contents
     const tableOfContents = generateTableOfContents(documents);
@@ -691,7 +696,7 @@ export async function processRepository(
     // Automatically generate full repository documentation
     try {
       console.log('Auto-generating full repository documentation...');
-      result.fullRepoDocumentation = await generateFullRepoDocumentation(result);
+      result.fullRepoDocumentation = await generateFullRepoDocumentation(result, model);
       console.log('Full repository documentation generated successfully');
     } catch (error: any) {
       console.error('Failed to generate full repository documentation:', error);

@@ -302,25 +302,15 @@ export async function syncToGitHubWiki(
   markdown: string,
   pageName: string,
   config: GitHubWikiConfig
-): Promise<{ success: boolean; url?: string; error?: string }> {
-  try {
-    const octokit = new Octokit({ auth: config.token });
-
-    // GitHub Wikis are just Git repositories
-    // We need to clone, commit, and push
-    const wikiUrl = `https://github.com/${config.owner}/${config.repo}.wiki.git`;
-
-    // For now, return instructions - full implementation would require git operations
-    return {
-      success: true,
-      url: `https://github.com/${config.owner}/${config.repo}/wiki/${pageName}`,
-    };
-  } catch (error: any) {
-    return {
-      success: false,
-      error: error.message,
-    };
-  }
+): Promise<{ success: boolean; url?: string; error?: string; notImplemented?: boolean }> {
+  // GitHub Wikis are their own Git repositories, so syncing a page means
+  // cloning, committing, and pushing rather than a single API call - that
+  // isn't built yet, so say so instead of pretending to have synced.
+  return {
+    success: false,
+    error: 'GitHub Wiki sync is not yet implemented',
+    notImplemented: true,
+  };
 }
 
 // ============================================================================

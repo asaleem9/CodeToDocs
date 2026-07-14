@@ -1,9 +1,13 @@
 import { Router, Request, Response } from 'express';
 import crypto from 'crypto';
-import { generateDocumentation } from '../services/llmService';
+import { generateDocumentation, generateDocumentationStream, generatePRDocumentation } from '../services/llmService';
+import { classifyLlmError, LlmErrorKind } from '../services/llmClient';
+import { parsePRUrl, fetchPRData, buildPRPromptInput, PRFetchError, PRFetchErrorKind } from '../services/prService';
 import { documentationStorage } from '../services/storageService';
+import { settingsService } from '../services/settingsService';
+import { tokenStorage } from '../services/tokenStorage';
 import { QualityScore } from '../services/qualityScoreService';
-import { getStorageUserId, canAccessDocument } from '../middleware/auth';
+import { getStorageUserId, getUserId, canAccessDocument } from '../middleware/auth';
 import { rateLimit } from '../middleware/rateLimit';
 
 const router = Router();
@@ -27,12 +31,20 @@ interface GenerateRequest {
   language: string;
 }
 
+interface PRInfo {
+  prNumber: number;
+  repository: string;
+  branch: string;
+  author: string;
+}
+
 interface GenerateResponse {
   id: string;
   documentation: string;
   diagram?: string;
   qualityScore?: QualityScore;
   timestamp: Date;
+  prInfo?: PRInfo;
 }
 
 interface ErrorResponse {
@@ -45,14 +57,54 @@ interface JobProgress {
   status: string;
 }
 
+// A job's error can come from the LLM call or, for PR jobs, from the GitHub
+// fetch that precedes it.
+type JobErrorKind = LlmErrorKind | PRFetchErrorKind;
+
 // Store active documentation generation jobs
 const activeJobs = new Map<string, {
   userId: number;
   createdAt: number;
   progress: JobProgress;
+  streamText: string;
+  listeners: Set<Response>;
   result?: GenerateResponse;
   error?: string;
+  errorKind?: JobErrorKind;
+  retryable?: boolean;
 }>();
+
+/** Writes one SSE event (`event: <name>\ndata: <json>\n\n`) to a stream response. */
+function sendSseEvent(res: Response, event: string, data: unknown): void {
+  res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+}
+
+/**
+ * Updates a job's progress and fans it out to any connected SSE listeners.
+ * The job record itself is the same one the progress poller reads, so this
+ * doesn't change what polling sees - it just adds a push side channel.
+ */
+function updateJobProgress(jobId: string, percentage: number, status: string): void {
+  const job = activeJobs.get(jobId);
+  if (!job) return;
+  job.progress = { percentage, status };
+  for (const listener of job.listeners) {
+    sendSseEvent(listener, 'progress', job.progress);
+  }
+}
+
+/**
+ * Sends the terminal SSE event (done/error) to every listener on a job and
+ * closes their connections. Generation has already finished by the time this
+ * runs, so there's nothing left for a listener to wait on.
+ */
+function closeJobListeners(job: { listeners: Set<Response> }, event: 'done' | 'error', data: unknown): void {
+  for (const listener of job.listeners) {
+    sendSseEvent(listener, event, data);
+    listener.end();
+  }
+  job.listeners.clear();
+}
 
 // Sweep abandoned/errored jobs so the map can't grow without bound (the
 // post-retrieval cleanup only fires on a successful result fetch).
@@ -73,7 +125,6 @@ if (typeof jobSweep.unref === 'function') jobSweep.unref();
 router.post('/generate', generateLimiter, async (req: Request, res: Response) => {
   try {
     const { code, language } = req.body as GenerateRequest;
-    const userId = getStorageUserId(req);
 
     // Validate request body
     if (!code || typeof code !== 'string') {
@@ -83,12 +134,23 @@ router.post('/generate', generateLimiter, async (req: Request, res: Response) =>
       } as ErrorResponse);
     }
 
+    // Reject oversized submissions up front, before we touch settings or the LLM.
+    if (code.length > 100_000) {
+      return res.status(413).json({
+        error: 'Code is too large to process. Please limit submissions to 100,000 characters.',
+        code: 'code_too_large',
+      });
+    }
+
     if (!language || typeof language !== 'string') {
       return res.status(400).json({
         error: 'Language is required and must be a string',
         timestamp: new Date(),
       } as ErrorResponse);
     }
+
+    const userId = getStorageUserId(req);
+    const model = await settingsService.getClaudeModel(userId);
 
     // Generate an unguessable job ID
     const jobId = `job-${crypto.randomBytes(12).toString('hex')}`;
@@ -101,6 +163,8 @@ router.post('/generate', generateLimiter, async (req: Request, res: Response) =>
         percentage: 0,
         status: 'Initializing...',
       },
+      streamText: '',
+      listeners: new Set(),
     });
 
     // Return job ID immediately
@@ -110,34 +174,40 @@ router.post('/generate', generateLimiter, async (req: Request, res: Response) =>
     (async () => {
       try {
         // Update progress: Analyzing code
-        activeJobs.get(jobId)!.progress = {
-          percentage: 20,
-          status: 'Analyzing code structure...',
-        };
+        updateJobProgress(jobId, 20, 'Analyzing code structure...');
 
         // Simulate a small delay for progress visibility
         await new Promise(resolve => setTimeout(resolve, 300));
 
         // Update progress: Generating documentation
-        activeJobs.get(jobId)!.progress = {
-          percentage: 40,
-          status: 'Generating documentation with AI...',
-        };
+        updateJobProgress(jobId, 40, 'Generating documentation with AI...');
 
-        // Call the LLM service
-        const result = await generateDocumentation(code, language);
+        // Call the LLM service, fanning each token delta out to any connected
+        // SSE listeners as it arrives. Generation keeps running even if every
+        // listener disconnects - job.streamText is the durable record.
+        const result = await generateDocumentationStream(code, language, {
+          model,
+          onDelta: (chunk) => {
+            const job = activeJobs.get(jobId)!;
+            job.streamText += chunk;
+            for (const listener of job.listeners) {
+              sendSseEvent(listener, 'delta', { text: chunk });
+            }
+          },
+        });
 
         // Handle service errors
         if (!result.success) {
-          activeJobs.get(jobId)!.error = result.error || 'Failed to generate documentation';
+          const job = activeJobs.get(jobId)!;
+          job.error = result.error || 'Failed to generate documentation';
+          job.errorKind = result.errorKind;
+          job.retryable = result.retryable;
+          closeJobListeners(job, 'error', { error: job.error, errorKind: job.errorKind, retryable: job.retryable });
           return;
         }
 
         // Update progress: Processing results
-        activeJobs.get(jobId)!.progress = {
-          percentage: 90,
-          status: 'Processing results...',
-        };
+        updateJobProgress(jobId, 90, 'Processing results...');
 
         // Store the documentation
         const id = await documentationStorage.store(
@@ -154,6 +224,150 @@ router.post('/generate', generateLimiter, async (req: Request, res: Response) =>
         console.log(`Stored documentation: ${id} for user ${userId} (total: ${documentationStorage.getAll().length})`);
 
         // Complete with result
+        updateJobProgress(jobId, 100, 'Complete');
+
+        const job = activeJobs.get(jobId)!;
+        job.result = {
+          id,
+          documentation: result.documentation,
+          diagram: result.diagram,
+          qualityScore: result.qualityScore,
+          timestamp: new Date(),
+        };
+        closeJobListeners(job, 'done', { result: job.result });
+      } catch (error: any) {
+        console.error('Error generating documentation:', error);
+        const job = activeJobs.get(jobId)!;
+        const classified = classifyLlmError(error);
+        job.error = error.message || 'Internal server error';
+        job.errorKind = classified.kind;
+        job.retryable = classified.retryable;
+        closeJobListeners(job, 'error', { error: job.error, errorKind: job.errorKind, retryable: job.retryable });
+      }
+    })();
+  } catch (error) {
+    console.error('Error in /api/generate endpoint:', error);
+
+    return res.status(500).json({
+      error: 'Internal server error',
+      timestamp: new Date(),
+    } as ErrorResponse);
+  }
+});
+
+/**
+ * POST /api/generate/pr
+ * Generates documentation for a GitHub pull request (with progress tracking).
+ * Uses the same job machinery as /api/generate - polled through the same
+ * /api/generate/progress|result/:jobId routes.
+ * Authentication is optional - if authenticated, the caller's GitHub token is
+ * used for the PR fetch and docs are stored with their userId.
+ */
+router.post('/generate/pr', generateLimiter, async (req: Request, res: Response) => {
+  try {
+    const { prUrl } = req.body as { prUrl: string };
+
+    if (!prUrl || typeof prUrl !== 'string') {
+      return res.status(400).json({
+        error: 'prUrl is required and must be a string',
+        code: 'invalid_pr_url',
+      });
+    }
+
+    const parsed = parsePRUrl(prUrl);
+    if (!parsed) {
+      return res.status(400).json({
+        error: 'Invalid GitHub PR URL. Expected https://github.com/<owner>/<repo>/pull/<number>',
+        code: 'invalid_pr_url',
+      });
+    }
+
+    const userId = getStorageUserId(req);
+    const model = await settingsService.getClaudeModel(userId);
+
+    // If the caller is signed in, use their GitHub token for the PR fetch (same
+    // pattern as /api/batch/start) so it isn't rate-limited and can read private PRs.
+    const githubUserId = getUserId(req);
+    const userToken = githubUserId ? (await tokenStorage.get(githubUserId)) || undefined : undefined;
+
+    const jobId = `job-${crypto.randomBytes(12).toString('hex')}`;
+
+    activeJobs.set(jobId, {
+      userId,
+      createdAt: Date.now(),
+      progress: {
+        percentage: 0,
+        status: 'Initializing...',
+      },
+      streamText: '',
+      listeners: new Set(),
+    });
+
+    res.json({ jobId, message: 'PR documentation generation started' });
+
+    // Process in background
+    (async () => {
+      try {
+        activeJobs.get(jobId)!.progress = {
+          percentage: 15,
+          status: 'Fetching pull request...',
+        };
+
+        const pr = await fetchPRData(parsed.owner, parsed.repo, parsed.number, userToken);
+
+        activeJobs.get(jobId)!.progress = {
+          percentage: 40,
+          status: 'Generating documentation with AI...',
+        };
+
+        const prInput = buildPRPromptInput(pr);
+        const result = await generatePRDocumentation(
+          prInput,
+          {
+            owner: parsed.owner,
+            repo: parsed.repo,
+            number: parsed.number,
+            title: pr.title,
+            author: pr.author,
+            headRef: pr.headRef,
+            baseRef: pr.baseRef,
+          },
+          { model }
+        );
+
+        if (!result.success) {
+          const job = activeJobs.get(jobId)!;
+          job.error = result.error || 'Failed to generate PR documentation';
+          job.errorKind = result.errorKind;
+          job.retryable = result.retryable;
+          return;
+        }
+
+        activeJobs.get(jobId)!.progress = {
+          percentage: 90,
+          status: 'Processing results...',
+        };
+
+        const prInfo: PRInfo = {
+          prNumber: parsed.number,
+          repository: `${parsed.owner}/${parsed.repo}`,
+          branch: pr.headRef,
+          author: pr.author,
+        };
+
+        const id = await documentationStorage.store(
+          userId,
+          result.documentation,
+          '', // code - not applicable for PR docs
+          'pr',
+          result.diagram,
+          result.qualityScore,
+          prInfo,
+          false // isPublic - default to private
+        );
+
+        console.log(`Stored PR documentation: ${id} for user ${userId} (total: ${documentationStorage.getAll().length})`);
+
         activeJobs.get(jobId)!.progress = {
           percentage: 100,
           status: 'Complete',
@@ -165,14 +379,25 @@ router.post('/generate', generateLimiter, async (req: Request, res: Response) =>
           diagram: result.diagram,
           qualityScore: result.qualityScore,
           timestamp: new Date(),
+          prInfo,
         };
       } catch (error: any) {
-        console.error('Error generating documentation:', error);
-        activeJobs.get(jobId)!.error = error.message || 'Internal server error';
+        console.error('Error generating PR documentation:', error);
+        const job = activeJobs.get(jobId)!;
+        if (error instanceof PRFetchError) {
+          job.error = error.message;
+          job.errorKind = error.kind;
+          job.retryable = error.kind === 'github_rate_limited';
+        } else {
+          const classified = classifyLlmError(error);
+          job.error = error.message || 'Internal server error';
+          job.errorKind = classified.kind;
+          job.retryable = classified.retryable;
+        }
       }
     })();
   } catch (error) {
-    console.error('Error in /api/generate endpoint:', error);
+    console.error('Error in /api/generate/pr endpoint:', error);
 
     return res.status(500).json({
       error: 'Internal server error',
@@ -199,6 +424,8 @@ router.get('/generate/progress/:jobId', (req: Request, res: Response) => {
     progress: job.progress,
     completed: job.result !== undefined,
     error: job.error,
+    errorKind: job.errorKind,
+    retryable: job.retryable,
   });
 });
 
@@ -217,7 +444,7 @@ router.get('/generate/result/:jobId', (req: Request, res: Response) => {
   }
 
   if (job.error) {
-    return res.status(500).json({ error: job.error });
+    return res.status(500).json({ error: job.error, errorKind: job.errorKind, retryable: job.retryable });
   }
 
   if (!job.result) {
@@ -233,6 +460,65 @@ router.get('/generate/result/:jobId', (req: Request, res: Response) => {
   }, 60000); // Keep for 1 minute after retrieval
 
   res.json(job.result);
+});
+
+/**
+ * GET /api/generate/stream/:jobId
+ * Streams a generation job's text deltas and progress over SSE, as an additive
+ * view on top of the same job the progress/result pollers read. Generation is
+ * decoupled from this connection - it keeps running in the background job
+ * regardless of whether anyone is listening, so a dropped/reconnected client
+ * never loses text: the initial `snapshot` event always catches it up.
+ * Same access guard as the pollers - anyone without the job id/ownership gets 404,
+ * which the frontend treats as "fall back to polling".
+ */
+router.get('/generate/stream/:jobId', (req: Request, res: Response) => {
+  const { jobId } = req.params;
+
+  const job = activeJobs.get(jobId);
+
+  if (!job || !canAccessJob(job.userId, getStorageUserId(req))) {
+    return res.status(404).json({ error: 'Job not found' });
+  }
+
+  res.set({
+    'Content-Type': 'text/event-stream',
+    'Cache-Control': 'no-cache',
+    Connection: 'keep-alive',
+    'X-Accel-Buffering': 'no', // disable proxy buffering so deltas arrive as they're written
+  });
+  res.flushHeaders();
+
+  sendSseEvent(res, 'snapshot', {
+    progress: job.progress,
+    text: job.streamText,
+    diagram: job.result?.diagram,
+    done: job.result !== undefined,
+    error: job.error,
+  });
+
+  // Job already finished before the client connected - send the terminal
+  // event and close, same as a normal completion.
+  if (job.result) {
+    sendSseEvent(res, 'done', { result: job.result });
+    return res.end();
+  }
+  if (job.error) {
+    sendSseEvent(res, 'error', { error: job.error, errorKind: job.errorKind, retryable: job.retryable });
+    return res.end();
+  }
+
+  job.listeners.add(res);
+
+  // Cloud Run drops idle connections; a comment ping keeps this one open.
+  const heartbeat = setInterval(() => {
+    res.write(': ping\n\n');
+  }, 15000);
+
+  req.on('close', () => {
+    clearInterval(heartbeat);
+    job.listeners.delete(res);
+  });
 });
 
 /**

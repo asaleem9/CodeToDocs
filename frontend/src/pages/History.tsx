@@ -1,34 +1,18 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
+import { Link, useNavigate } from 'react-router-dom'
 import axios from 'axios'
-import ReactMarkdown from 'react-markdown'
-import remarkGfm from 'remark-gfm'
-import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
-import { paperTheme } from '../lib/syntaxTheme'
-import { renderMermaid } from '../lib/mermaid'
 import { useGSAP, bootSequence } from '../lib/motion'
 import { getLanguageColor } from '../lib/languages'
-import QualityScore from '../components/QualityScore'
+import { docTitle, formatDate } from '../lib/docMeta'
+import DocumentSheet from '../components/DocumentSheet'
+import ExportMenu from '../components/ExportMenu'
 import Panel from '../components/ui/Panel'
-import Button from '../components/ui/Button'
+import Button, { buttonClasses } from '../components/ui/Button'
 import Badge from '../components/ui/Badge'
 import EmptyState from '../components/ui/EmptyState'
 import Spinner from '../components/ui/Spinner'
 import { showErrorToast, showSuccessToast } from '../utils/errorHandler'
-
-interface QualityScoreData {
-  score: number
-  breakdown: {
-    hasOverview: boolean
-    hasParameters: boolean
-    hasReturnValues: boolean
-    hasExamples: boolean
-    hasUsage: boolean
-    hasDependencies: boolean
-    hasNotes: boolean
-    codeBlocksCount: number
-  }
-}
-
+import type { QualityScoreData } from '../types'
 
 interface StoredDoc {
   id: string
@@ -38,6 +22,10 @@ interface StoredDoc {
   code: string
   language: string
   createdAt: string // Backend uses createdAt, not generatedAt
+  // docMeta's DocTitleSource only declares 'single' | 'batch', but the
+  // backend also writes 'pr' (backend/src/services/storageService.ts) — cast
+  // to RawDocType where we need to distinguish it, rather than widen this
+  // field and break docTitle()'s param type.
   type?: 'single' | 'batch'
   isPublic?: boolean
   batchInfo?: {
@@ -59,14 +47,44 @@ const TABS = [
   { id: 'public', label: 'PUBLIC GALLERY' },
 ] as const
 
+// 'single' is the backend's literal for a one-off manual generation — label
+// it "manual" here since that's what it means from the list.
+const TYPE_FILTERS = [
+  { id: 'all', label: 'all' },
+  { id: 'single', label: 'manual' },
+  { id: 'batch', label: 'batch' },
+  { id: 'pr', label: 'pr' },
+] as const
+
+type TypeFilter = (typeof TYPE_FILTERS)[number]['id']
+type RawDocType = 'single' | 'batch' | 'pr'
+
+const SEARCH_INPUT_CLASSES =
+  'w-full rounded-[2px] border border-ink-700 bg-ink-850 px-3.5 py-2 font-mono text-[13px] text-ink-100 transition-colors placeholder:text-ink-400 hover:border-ink-600 focus:border-phosphor-500 focus:outline-none'
+
 function History() {
+  const navigate = useNavigate()
   const [docs, setDocs] = useState<StoredDoc[]>([])
   const [selectedDoc, setSelectedDoc] = useState<StoredDoc | null>(null)
   const [isLoading, setIsLoading] = useState(true)
-  const [isDiagramCollapsed, setIsDiagramCollapsed] = useState<boolean>(false)
   const [activeTab, setActiveTab] = useState<'my-docs' | 'public'>('my-docs')
-  const diagramRef = useRef<HTMLDivElement>(null)
+  const [isDiagramCollapsed, setIsDiagramCollapsed] = useState<boolean>(false)
+  const [searchQuery, setSearchQuery] = useState<string>('')
+  const [typeFilter, setTypeFilter] = useState<TypeFilter>('all')
   const scopeRef = useRef<HTMLDivElement>(null)
+
+  // client-side search + type filter over the already-loaded docs for the
+  // active tab — no backend round-trip
+  const filteredDocs = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase()
+    return docs.filter((doc) => {
+      const docType = (doc.type as RawDocType | undefined) ?? 'single'
+      if (typeFilter !== 'all' && docType !== typeFilter) return false
+      if (!query) return true
+      const haystack = `${docTitle(doc)} ${doc.language} ${docType}`.toLowerCase()
+      return haystack.includes(query)
+    })
+  }, [docs, searchQuery, typeFilter])
 
   // page boot-in
   useGSAP(
@@ -79,13 +97,6 @@ function History() {
   useEffect(() => {
     fetchHistory()
   }, [activeTab])
-
-  // Render diagram when selected doc changes
-  useEffect(() => {
-    if (selectedDoc?.diagram && diagramRef.current) {
-      renderMermaid(diagramRef.current, selectedDoc.diagram)
-    }
-  }, [selectedDoc])
 
   const fetchHistory = async () => {
     setIsLoading(true)
@@ -149,43 +160,31 @@ function History() {
     }
   }
 
-  const formatDate = (dateString: string) => {
-    if (!dateString) return 'Unknown'
+  const handleShareDocumentation = async () => {
+    if (!selectedDoc) return
 
-    const date = new Date(dateString)
-
-    // Check if date is valid
-    if (isNaN(date.getTime())) {
-      console.warn('Invalid date:', dateString)
-      return 'Invalid date'
+    try {
+      await navigator.clipboard.writeText(`${window.location.origin}/app/docs/${selectedDoc.id}`)
+      showSuccessToast('Share link copied to clipboard!')
+    } catch (err) {
+      showErrorToast(err)
     }
+  }
 
-    const now = new Date()
-    const diffMs = now.getTime() - date.getTime()
-    const diffMins = Math.floor(diffMs / 60000)
-    const diffHours = Math.floor(diffMs / 3600000)
-    const diffDays = Math.floor(diffMs / 86400000)
+  const handleSendToIntegration = () => {
+    if (!selectedDoc) return
 
-    if (diffMins < 1) return 'Just now'
-    if (diffMins < 60) return `${diffMins}m ago`
-    if (diffHours < 24) return `${diffHours}h ago`
-    if (diffDays < 7) return `${diffDays}d ago`
-
-    return date.toLocaleDateString('en-US', {
-      month: 'short',
-      day: 'numeric',
-      year: date.getFullYear() !== now.getFullYear() ? 'numeric' : undefined
+    navigate('/app/integrations', {
+      state: { title: docTitle(selectedDoc), markdown: selectedDoc.documentation },
     })
   }
 
-  const docTitle = (doc: StoredDoc) => {
-    if (doc.type === 'batch' && doc.batchInfo) {
-      return doc.batchInfo.repoUrl.split('/').slice(-2).join('/')
-    }
-    if (doc.prInfo) {
-      return `PR #${doc.prInfo.prNumber} · ${doc.prInfo.repository.split('/')[1]}`
-    }
-    return `${doc.language} · manual`
+  const handleRegenerate = () => {
+    if (!selectedDoc?.code) return
+
+    navigate('/app', {
+      state: { code: selectedDoc.code, language: selectedDoc.language },
+    })
   }
 
   return (
@@ -205,7 +204,8 @@ function History() {
         </div>
         {!isLoading && docs.length > 0 && (
           <span className="font-mono text-[13px] text-ink-300">
-            {docs.length} {activeTab === 'public' ? 'public documents' : 'documents'}
+            {filteredDocs.length}/{docs.length}{' '}
+            {activeTab === 'public' ? 'public documents' : 'documents'}
           </span>
         )}
       </header>
@@ -231,12 +231,12 @@ function History() {
           both columns scroll internally and the page never grows */}
       <div
         data-boot
-        className="grid min-h-0 grid-cols-1 gap-5 lg:h-[calc(100vh-24rem)] lg:min-h-[460px] lg:grid-cols-[380px_1fr]"
+        className="grid min-h-0 grid-cols-1 gap-5 lg:h-[calc(100dvh-24rem)] lg:min-h-[460px] lg:grid-cols-[380px_1fr]"
         style={{ opacity: 0 }}
       >
         <Panel
           title={activeTab === 'public' ? 'GALLERY' : 'DOCUMENTS'}
-          className="min-h-0 min-w-0 max-lg:max-h-[400px]"
+          className={`min-h-0 min-w-0 max-lg:max-h-[400px] ${selectedDoc ? 'max-lg:hidden' : ''}`}
         >
           {isLoading ? (
             <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 p-8">
@@ -254,12 +254,43 @@ function History() {
               }
             />
           ) : (
-            <div className="min-h-0 flex-1 overflow-y-auto">
-              {docs.map((doc) => (
+            <div className="flex min-h-0 flex-1 flex-col">
+              <div className="flex flex-col gap-2 border-b border-ink-700/60 p-3">
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="search documents…"
+                  className={SEARCH_INPUT_CLASSES}
+                />
+                <div className="flex flex-wrap gap-1.5">
+                  {TYPE_FILTERS.map((filter) => (
+                    <Button
+                      key={filter.id}
+                      size="sm"
+                      variant={typeFilter === filter.id ? 'primary' : 'ghost'}
+                      onClick={() => setTypeFilter(filter.id)}
+                    >
+                      [{filter.label}]
+                    </Button>
+                  ))}
+                </div>
+              </div>
+
+              {filteredDocs.length === 0 ? (
+                <EmptyState
+                  glyph="⌕"
+                  title="no matches"
+                  hint="Try a different search term or type filter."
+                  className="flex-1"
+                />
+              ) : (
+              <div className="min-h-0 flex-1 overflow-y-auto">
+              {filteredDocs.map((doc) => (
                 <div
                   key={doc.id}
                   onClick={() => handleSelectDoc(doc)}
-                  className={`group relative cursor-pointer border-b border-l-2 border-b-ink-700/60 px-4 py-3 transition-colors ${
+                  className={`group relative cursor-pointer border-b border-l-2 border-b-ink-700/60 px-4 py-3 pointer-coarse:pr-24 transition-colors ${
                     selectedDoc?.id === doc.id
                       ? 'border-l-phosphor-400 bg-phosphor-400/5'
                       : 'border-l-transparent hover:bg-ink-850'
@@ -294,7 +325,7 @@ function History() {
                   ) : null}
 
                   {activeTab === 'my-docs' && (
-                    <div className="absolute top-1/2 right-3 flex -translate-y-1/2 items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+                    <div className="absolute top-1/2 right-3 flex -translate-y-1/2 items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100 pointer-coarse:opacity-100">
                       <button
                         onClick={(e) => handleToggleVisibility(doc.id, doc.isPublic, e)}
                         title={
@@ -317,6 +348,8 @@ function History() {
                   )}
                 </div>
               ))}
+              </div>
+              )}
             </div>
           )}
         </Panel>
@@ -324,90 +357,93 @@ function History() {
         <Panel
           title="DETAIL"
           active={!!selectedDoc}
-          className="min-h-0 min-w-0"
+          className="min-h-0 min-w-0 max-lg:h-[calc(100dvh-14rem)]"
           actions={
             selectedDoc ? (
-              <Button size="sm" variant="ghost" onClick={handleCopyDocumentation}>
-                copy
-              </Button>
+              // 6 actions don't fit one row below lg. The tab bar is absolutely
+              // positioned (Panel.tsx) and sizes to fit this span, so wrapping
+              // would grow it tall enough to cover the content underneath —
+              // cap the width instead and let the rest scroll horizontally,
+              // keeping it the same single-row height as desktop.
+              <span className="flex items-center gap-1.5 max-lg:max-w-[46vw] max-lg:overflow-x-auto">
+                <Link to={`/app/docs/${selectedDoc.id}`} className={buttonClasses('ghost', 'sm')}>
+                  open ↗
+                </Link>
+                <Button size="sm" variant="ghost" onClick={handleShareDocumentation}>
+                  share
+                </Button>
+                <Button size="sm" variant="ghost" onClick={handleCopyDocumentation}>
+                  copy
+                </Button>
+                <Button size="sm" variant="ghost" onClick={handleSendToIntegration}>
+                  send to…
+                </Button>
+                <ExportMenu
+                  documentation={selectedDoc.documentation}
+                  metadata={{
+                    language: selectedDoc.language,
+                    generatedAt: new Date(selectedDoc.createdAt),
+                    qualityScore: selectedDoc.qualityScore?.score,
+                    prInfo: selectedDoc.prInfo,
+                  }}
+                />
+                {selectedDoc.code && (
+                  <Button size="sm" variant="ghost" onClick={handleRegenerate}>
+                    regen
+                  </Button>
+                )}
+              </span>
             ) : undefined
           }
         >
           {selectedDoc ? (
-            <div className="min-h-0 flex-1 overflow-y-auto">
-              <div className="flex min-h-full flex-col gap-4 p-4">
-                <div className="flex flex-wrap items-center gap-3">
-                  <h2 className="font-display text-base text-ink-100">
-                    {selectedDoc.type === 'batch'
-                      ? 'Full Repository Documentation'
-                      : 'Generated Documentation'}
-                  </h2>
-                  {selectedDoc.type === 'batch' && selectedDoc.batchInfo && (
-                    <span className="flex items-center gap-2">
-                      <Badge tone="amber">
-                        batch {selectedDoc.batchInfo.successCount}/{selectedDoc.batchInfo.totalFiles}
-                      </Badge>
-                      <span className="font-mono text-[12px] text-ink-400">
-                        {selectedDoc.batchInfo.repoUrl.split('/').slice(-2).join('/')}
+            <div className="flex min-h-0 flex-1 flex-col">
+              {/* drill-in back control — desktop shows both panes side by
+                  side, so this row only exists below lg. pt-16 clears the
+                  floating action-tab bar above it (Panel.tsx), which grows
+                  taller than a plain title on touch — see the actions span
+                  above, capped and scrollable for the same reason. */}
+              <div className="border-b border-ink-700/60 px-2 pt-16 pb-2 lg:hidden">
+                <Button size="sm" variant="ghost" onClick={() => setSelectedDoc(null)}>
+                  ← back
+                </Button>
+              </div>
+              <div className="min-h-0 flex-1 overflow-y-auto">
+                <div className="flex min-h-full flex-col gap-4 p-4">
+                  <div className="flex flex-wrap items-center gap-3">
+                    <h2 className="font-display text-base text-ink-100">
+                      {selectedDoc.type === 'batch'
+                        ? 'Full Repository Documentation'
+                        : 'Generated Documentation'}
+                    </h2>
+                    {selectedDoc.type === 'batch' && selectedDoc.batchInfo && (
+                      <span className="flex items-center gap-2">
+                        <Badge tone="amber">
+                          batch {selectedDoc.batchInfo.successCount}/{selectedDoc.batchInfo.totalFiles}
+                        </Badge>
+                        <span className="font-mono text-[12px] text-ink-400">
+                          {selectedDoc.batchInfo.repoUrl.split('/').slice(-2).join('/')}
+                        </span>
                       </span>
-                    </span>
-                  )}
-                  {selectedDoc.prInfo && (
-                    <span className="flex items-center gap-2">
-                      <Badge tone="phosphor">pr #{selectedDoc.prInfo.prNumber}</Badge>
-                      <span className="font-mono text-[12px] text-ink-400">
-                        {selectedDoc.prInfo.repository}
+                    )}
+                    {selectedDoc.prInfo && (
+                      <span className="flex items-center gap-2">
+                        <Badge tone="phosphor">pr #{selectedDoc.prInfo.prNumber}</Badge>
+                        <span className="font-mono text-[12px] text-ink-400">
+                          {selectedDoc.prInfo.repository}
+                        </span>
                       </span>
-                    </span>
-                  )}
-                </div>
-
-                {/* the printout */}
-                <div className="border border-paper-300 shadow-[0_14px_40px_rgba(0,0,0,0.5)]">
-                  <div className="markdown-content">
-                    <ReactMarkdown
-                      remarkPlugins={[remarkGfm]}
-                      components={{
-                        code({ node, inline, className, children, ...props }: any) {
-                          const match = /language-(\w+)/.exec(className || '')
-                          return !inline && match ? (
-                            <SyntaxHighlighter
-                              style={paperTheme}
-                              language={match[1]}
-                              PreTag="div"
-                              {...props}
-                            >
-                              {String(children).replace(/\n$/, '')}
-                            </SyntaxHighlighter>
-                          ) : (
-                            <code className={className} {...props}>
-                              {children}
-                            </code>
-                          )
-                        }
-                      }}
-                    >
-                      {selectedDoc.documentation}
-                    </ReactMarkdown>
-
-                    {selectedDoc.diagram && (
-                      <div className="border-t border-paper-300 px-2 pt-4 pb-2">
-                        <button
-                          className="flex w-full cursor-pointer items-center justify-between font-mono text-[11px] tracking-[0.14em] text-print-400 uppercase"
-                          onClick={() => setIsDiagramCollapsed(!isDiagramCollapsed)}
-                        >
-                          <span>figure 1 — flow diagram</span>
-                          <span aria-hidden>{isDiagramCollapsed ? '▸' : '▾'}</span>
-                        </button>
-                        {!isDiagramCollapsed && (
-                          <div ref={diagramRef} className="mt-3 flex justify-center overflow-x-auto" />
-                        )}
-                      </div>
                     )}
                   </div>
-                </div>
 
-                {selectedDoc.qualityScore && <QualityScore qualityScore={selectedDoc.qualityScore} />}
+                  <DocumentSheet
+                    documentation={selectedDoc.documentation}
+                    diagram={selectedDoc.diagram}
+                    qualityScore={selectedDoc.qualityScore}
+                    diagramCollapsed={isDiagramCollapsed}
+                    onDiagramToggle={() => setIsDiagramCollapsed(!isDiagramCollapsed)}
+                  />
+                </div>
               </div>
             </div>
           ) : (

@@ -3,6 +3,8 @@ import crypto from 'crypto';
 import { generateDocumentation } from '../services/llmService';
 import { documentationStorage } from '../services/storageService';
 import { tokenStorage } from '../services/tokenStorage';
+import { settingsService } from '../services/settingsService';
+import { requireAuth } from '../middleware/auth';
 
 const router = Router();
 
@@ -236,21 +238,11 @@ router.post('/github', async (req: Request, res: Response) => {
 
 /**
  * GET /api/webhook/status
- * Get webhook status and recent events
+ * Get webhook status and recent events. Requires auth - recentEvents leaks
+ * repo/PR names, which anonymous callers shouldn't be able to enumerate.
  */
-router.get('/status', (req: Request, res: Response) => {
+router.get('/status', requireAuth, (req: Request, res: Response) => {
   res.json(webhookStatus);
-});
-
-/**
- * GET /api/webhook/queue
- * Get current PR queue (for debugging/monitoring)
- */
-router.get('/queue', (req: Request, res: Response) => {
-  res.json({
-    queueSize: prQueue.length,
-    prs: prQueue,
-  });
 });
 
 /**
@@ -489,6 +481,10 @@ async function processPRFiles(prData: PRData): Promise<void> {
 
     console.log(`Using userId ${userId} for storing documentation`);
 
+    // Resolve the model preference of the user docs are attributed to (defaults
+    // to DEFAULT_MODEL for the userId 0 fallback, which has no settings).
+    const model = await settingsService.getClaudeModel(userId);
+
     // Fetch PR files
     console.log(`Fetching files for PR #${prData.prNumber}...`);
     const files = await fetchPRFiles(owner, repo, prData.prNumber, token);
@@ -531,7 +527,7 @@ async function processPRFiles(prData: PRData): Promise<void> {
       const language = detectLanguage(file.filename);
 
       // Generate documentation
-      const result = await generateDocumentation(content, language);
+      const result = await generateDocumentation(content, language, { model });
 
       if (result.success) {
         // Store documentation with PR info using repository owner's GitHub user ID
@@ -583,5 +579,4 @@ async function processPRFiles(prData: PRData): Promise<void> {
   }
 }
 
-export { prQueue };
 export default router;

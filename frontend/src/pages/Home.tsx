@@ -1,12 +1,9 @@
 import { useState, useEffect, useRef } from 'react'
-import axios from 'axios'
-import ReactMarkdown from 'react-markdown'
-import remarkGfm from 'remark-gfm'
-import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
-import { paperTheme } from '../lib/syntaxTheme'
-import { renderMermaid } from '../lib/mermaid'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { gsap, useGSAP, bootSequence, prefersReducedMotion } from '../lib/motion'
-import QualityScore from '../components/QualityScore'
+import DocumentSheet from '../components/DocumentSheet'
+import ExportMenu from '../components/ExportMenu'
+import { useGenerationJob } from '../hooks/useGenerationJob'
 import Panel from '../components/ui/Panel'
 import Button from '../components/ui/Button'
 import Menu, { MenuItem } from '../components/ui/Menu'
@@ -14,43 +11,54 @@ import Badge from '../components/ui/Badge'
 import EmptyState from '../components/ui/EmptyState'
 import ProgressBar from '../components/ui/ProgressBar'
 import { demoSamples } from '../data/demoSamples'
-import { downloadAsMarkdown, downloadAsHTML, copyAsMarkdown, copyAsHTML } from '../utils/exportUtils'
 import { showErrorToast, showSuccessToast } from '../utils/errorHandler'
 
-interface QualityScoreData {
-  score: number
-  breakdown: {
-    hasOverview: boolean
-    hasParameters: boolean
-    hasReturnValues: boolean
-    hasExamples: boolean
-    hasUsage: boolean
-    hasDependencies: boolean
-    hasNotes: boolean
-    codeBlocksCount: number
-  }
+const LANGUAGES = [
+  'javascript',
+  'typescript',
+  'python',
+  'java',
+  'go',
+  'rust',
+  'c++',
+  'c',
+  'c#',
+  'ruby',
+  'php',
+  'swift',
+  'kotlin',
+  'graphql',
+] as const
+
+// Matches the backend's `code.length > 100_000` guard in routes/documentation.ts
+const CODE_LIMIT = 100_000
+
+function formatCodeSize(chars: number): string {
+  return `${(chars / 1000).toFixed(1)} KB`
 }
 
-const LANGUAGES = ['javascript', 'typescript', 'python', 'java', 'graphql'] as const
-
 function Home() {
+  const location = useLocation()
+  const navigate = useNavigate()
   const [code, setCode] = useState<string>('')
   const [language, setLanguage] = useState<string>('javascript')
-  const [documentation, setDocumentation] = useState<string>('')
-  const [diagram, setDiagram] = useState<string>('')
-  const [qualityScore, setQualityScore] = useState<QualityScoreData | null>(null)
-  const [isLoading, setIsLoading] = useState<boolean>(false)
-  const [error, setError] = useState<string>('')
-  const [isDiagramCollapsed, setIsDiagramCollapsed] = useState<boolean>(false)
   const [showDemoMenu, setShowDemoMenu] = useState<boolean>(false)
-  const [showExportMenu, setShowExportMenu] = useState<boolean>(false)
-  const [progress, setProgress] = useState<number>(0)
-  const [progressStatus, setProgressStatus] = useState<string>('')
-  const [bootLog, setBootLog] = useState<string[]>([])
   const [pendingDemo, setPendingDemo] = useState<typeof demoSamples[0] | null>(null)
-  const diagramRef = useRef<HTMLDivElement>(null)
-  const progressIntervalRef = useRef<number | null>(null)
+  const [isDiagramCollapsed, setIsDiagramCollapsed] = useState<boolean>(false)
   const scopeRef = useRef<HTMLDivElement>(null)
+  const outputRef = useRef<HTMLDivElement>(null)
+
+  const job = useGenerationJob()
+  const isLoading = job.phase === 'submitting' || job.phase === 'running'
+  const currentStatus = job.statusLog[job.statusLog.length - 1] || ''
+
+  const codeSize = code.length
+  const isOverLimit = codeSize > CODE_LIMIT
+  const sizeColorClass = isOverLimit
+    ? 'text-red'
+    : codeSize / CODE_LIMIT >= 0.8
+      ? 'text-amber'
+      : 'text-ink-400'
 
   // page boot-in
   useGSAP(
@@ -63,7 +71,7 @@ function Home() {
   // the printout: docs slide out of the machine when they land
   useGSAP(
     () => {
-      if (!documentation || !scopeRef.current) return
+      if (!job.result || !scopeRef.current) return
       const sheet = scopeRef.current.querySelector('[data-sheet]')
       if (!sheet || prefersReducedMotion()) return
       gsap.fromTo(
@@ -72,80 +80,17 @@ function Home() {
         { clipPath: 'inset(0 0 0% 0)', y: 0, duration: 0.8, ease: 'power2.inOut' }
       )
     },
-    { dependencies: [documentation], scope: scopeRef }
+    { dependencies: [job.result], scope: scopeRef }
   )
 
-  // Render diagram when it changes
+  // below the two-pane breakpoint the output panel sits under the fold —
+  // bring it into view so the printout animation isn't wasted off-screen
   useEffect(() => {
-    if (diagram && diagramRef.current) {
-      renderMermaid(diagramRef.current, diagram)
+    if (!job.result) return
+    if (window.matchMedia('(max-width: 1023px)').matches) {
+      outputRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
     }
-  }, [diagram])
-
-  // accumulate the generation status feed into the boot log
-  useEffect(() => {
-    if (!isLoading || !progressStatus) return
-    setBootLog((log) =>
-      log[log.length - 1] === progressStatus ? log : [...log, progressStatus]
-    )
-  }, [progressStatus, isLoading])
-
-  const startProgressPolling = (jobId: string) => {
-    progressIntervalRef.current = window.setInterval(async () => {
-      try {
-        const progressResponse = await axios.get(`/api/generate/progress/${jobId}`, {
-          withCredentials: true
-        })
-
-        setProgress(progressResponse.data.progress.percentage)
-        setProgressStatus(progressResponse.data.progress.status)
-
-        // Check if completed
-        if (progressResponse.data.completed || progressResponse.data.error) {
-          if (progressIntervalRef.current) {
-            clearInterval(progressIntervalRef.current)
-            progressIntervalRef.current = null
-          }
-
-          if (progressResponse.data.error) {
-            setError(progressResponse.data.error)
-            showErrorToast({ response: { data: { error: progressResponse.data.error } } })
-            setIsLoading(false)
-            setProgress(0)
-            setProgressStatus('')
-            return
-          }
-
-          // Fetch the result
-          const resultResponse = await axios.get(`/api/generate/result/${jobId}`, {
-            withCredentials: true
-          })
-          setDocumentation(resultResponse.data.documentation)
-          if (resultResponse.data.diagram) {
-            setDiagram(resultResponse.data.diagram)
-          }
-          if (resultResponse.data.qualityScore) {
-            setQualityScore(resultResponse.data.qualityScore)
-          }
-          showSuccessToast('Documentation generated successfully!')
-          setIsLoading(false)
-          setProgress(0)
-          setProgressStatus('')
-        }
-      } catch (err: any) {
-        if (progressIntervalRef.current) {
-          clearInterval(progressIntervalRef.current)
-          progressIntervalRef.current = null
-        }
-        const errorMessage = err.response?.data?.error || 'Failed to generate documentation'
-        setError(errorMessage)
-        showErrorToast(err)
-        setIsLoading(false)
-        setProgress(0)
-        setProgressStatus('')
-      }
-    }, 500) // Poll every 500ms
-  }
+  }, [job.result])
 
   const handleGenerateDocumentation = async () => {
     if (!code.trim()) {
@@ -157,36 +102,7 @@ function Home() {
       return
     }
 
-    setIsLoading(true)
-    setError('')
-    setDocumentation('')
-    setDiagram('')
-    setQualityScore(null)
-    setProgress(0)
-    setProgressStatus('')
-    setBootLog(['job accepted'])
-
-    try {
-      // Start the job
-      const response = await axios.post('/api/generate', {
-        code,
-        language
-      }, {
-        withCredentials: true
-      })
-
-      const jobId = response.data.jobId
-
-      // Start polling for progress
-      startProgressPolling(jobId)
-    } catch (err: any) {
-      const errorMessage = err.response?.data?.error || 'Failed to generate documentation'
-      setError(errorMessage)
-      showErrorToast(err)
-      setIsLoading(false)
-      setProgress(0)
-      setProgressStatus('')
-    }
+    job.start('/api/generate', { code, language })
   }
 
   // Auto-generate when demo code is loaded into state
@@ -197,29 +113,40 @@ function Home() {
     }
   }, [code, pendingDemo])
 
-  // Cleanup on unmount
+  // Pick up a regenerate handoff from History — one-shot, so clear the nav
+  // state right after reading it, or a refresh re-fills the form. Pre-fill
+  // only; the user reviews and clicks generate themselves (rate limits).
   useEffect(() => {
-    return () => {
-      if (progressIntervalRef.current) {
-        clearInterval(progressIntervalRef.current)
-      }
-    }
-  }, [])
+    const handoff = location.state as { code?: string; language?: string } | null
+    if (!handoff?.code) return
+
+    setCode(handoff.code)
+    if (handoff.language) setLanguage(handoff.language)
+    showSuccessToast('code loaded — review and generate')
+    navigate(location.pathname, { replace: true, state: null })
+  }, [location.state])
 
   const handleClear = () => {
     setCode('')
-    setDocumentation('')
-    setDiagram('')
-    setQualityScore(null)
-    setError('')
-    setBootLog([])
+    job.reset()
     showSuccessToast('Cleared successfully')
   }
 
   const handleCopyDocumentation = async () => {
+    if (!job.result) return
     try {
-      await navigator.clipboard.writeText(documentation)
+      await navigator.clipboard.writeText(job.result.documentation)
       showSuccessToast('Documentation copied to clipboard!')
+    } catch (err) {
+      showErrorToast(err)
+    }
+  }
+
+  const handleShare = async () => {
+    if (!job.result?.id) return
+    try {
+      await navigator.clipboard.writeText(`${window.location.origin}/app/docs/${job.result.id}`)
+      showSuccessToast('Share link copied to clipboard!')
     } catch (err) {
       showErrorToast(err)
     }
@@ -232,39 +159,6 @@ function Home() {
     setShowDemoMenu(false)
     showSuccessToast(`Loaded demo: ${sample.name}`)
     setPendingDemo(sample)
-  }
-
-  const handleExport = async (format: 'markdown' | 'html', action: 'download' | 'copy') => {
-    if (!documentation) return
-
-    const metadata = {
-      language,
-      generatedAt: new Date(),
-      qualityScore: qualityScore?.score,
-    }
-
-    try {
-      if (action === 'download') {
-        if (format === 'markdown') {
-          downloadAsMarkdown(documentation, metadata)
-          showSuccessToast('Downloaded as Markdown')
-        } else {
-          await downloadAsHTML(documentation, metadata)
-          showSuccessToast('Downloaded as HTML')
-        }
-      } else {
-        if (format === 'markdown') {
-          await copyAsMarkdown(documentation, metadata)
-          showSuccessToast('Copied as Markdown')
-        } else {
-          await copyAsHTML(documentation, metadata)
-          showSuccessToast('Copied as HTML')
-        }
-      }
-      setShowExportMenu(false)
-    } catch (err) {
-      showErrorToast(err)
-    }
   }
 
   return (
@@ -297,7 +191,7 @@ function Home() {
           <select
             value={language}
             onChange={(e) => setLanguage(e.target.value)}
-            className="cursor-pointer appearance-none rounded-[2px] border border-ink-700 bg-ink-850 py-2 pr-9 pl-4 font-mono text-[13.5px] text-ink-100 transition-colors hover:border-ink-600 focus:border-phosphor-500 focus:outline-none"
+            className="cursor-pointer appearance-none rounded-[2px] border border-ink-700 bg-ink-850 py-2 pr-9 pl-4 font-mono text-[13.5px] text-ink-100 transition-colors hover:border-ink-600 focus:border-phosphor-500 focus:outline-none max-md:text-[16px]"
           >
             {LANGUAGES.map((lang) => (
               <option key={lang} value={lang}>
@@ -315,24 +209,29 @@ function Home() {
 
         <Button
           onClick={handleGenerateDocumentation}
-          disabled={isLoading || !code.trim()}
+          disabled={isLoading || !code.trim() || isOverLimit}
           loading={isLoading}
         >
-          {isLoading ? progressStatus || 'generating…' : 'generate documentation'}
+          {isLoading ? currentStatus || 'generating…' : 'generate documentation'}
         </Button>
 
-        <Button variant="ghost" onClick={handleClear} disabled={!code && !documentation}>
+        <Button variant="ghost" onClick={handleClear} disabled={!code && !job.result}>
           clear
         </Button>
 
-        {isLoading && progress > 0 && (
-          <ProgressBar value={progress} className="min-w-40 flex-1" />
+        {isLoading && job.progress > 0 && (
+          <ProgressBar value={job.progress} className="min-w-40 flex-1" />
         )}
       </div>
 
-      {error && (
-        <div className="border border-red/25 bg-red/10 px-4 py-3 font-mono text-[13px] text-red">
-          {error}
+      {job.error && (
+        <div className="flex flex-wrap items-center justify-between gap-3 border border-red/25 bg-red/10 px-4 py-3 font-mono text-[13px] text-red">
+          <span>{job.error.message}</span>
+          {job.error.retryable !== false && (
+            <Button size="sm" variant="ghost" onClick={job.retry}>
+              retry
+            </Button>
+          )}
         </div>
       )}
 
@@ -340,108 +239,81 @@ function Home() {
       <div data-boot className="grid min-h-0 flex-1 gap-5 lg:grid-cols-2" style={{ opacity: 0 }}>
         <Panel
           title="CODE INPUT"
+          className="min-w-0"
           actions={
-            <span className="font-mono text-[11px] text-ink-400">{code.length} chars</span>
+            <span className={`font-mono text-[11px] ${sizeColorClass}`}>
+              {formatCodeSize(codeSize)} / {CODE_LIMIT / 1000} KB
+            </span>
           }
         >
           <textarea
-            className="min-h-[420px] w-full flex-1 resize-none bg-ink-950/60 p-5 font-mono text-[13.5px] leading-relaxed text-ink-100 placeholder:text-ink-400 focus:outline-none"
+            className="min-h-[40svh] w-full flex-1 resize-none bg-ink-950/60 p-5 font-mono text-[13.5px] leading-relaxed text-ink-100 placeholder:text-ink-400 focus:outline-none max-md:text-[16px] lg:min-h-[420px]"
             value={code}
             onChange={(e) => setCode(e.target.value)}
             placeholder={`Paste your ${language} code here…`}
             spellCheck={false}
           />
+          {isOverLimit && (
+            <p className="border-t border-red/25 bg-red/10 px-5 py-2.5 font-mono text-[12px] leading-relaxed text-red">
+              This file is ~{formatCodeSize(codeSize)} — the generator tops out at{' '}
+              {CODE_LIMIT / 1000} KB. Trim it down, or use{' '}
+              <Link
+                to="/app/batch"
+                className="underline decoration-red/40 underline-offset-2 hover:text-ink-100"
+              >
+                /batch
+              </Link>{' '}
+              for whole repositories.
+            </p>
+          )}
         </Panel>
 
         <Panel
           title="OUTPUT"
-          active={isLoading || !!documentation}
+          className="min-w-0"
+          active={isLoading || !!job.result}
           actions={
-            documentation ? (
+            job.result ? (
               <span className="flex items-center gap-1.5">
                 <Button size="sm" variant="ghost" onClick={handleCopyDocumentation}>
                   copy
                 </Button>
-                <span className="relative">
-                  <Button size="sm" variant="ghost" onClick={() => setShowExportMenu(!showExportMenu)}>
-                    export ▾
-                  </Button>
-                  <Menu open={showExportMenu} onClose={() => setShowExportMenu(false)} align="right">
-                    <MenuItem onSelect={() => handleExport('markdown', 'download')}>
-                      ↓ download .md
-                    </MenuItem>
-                    <MenuItem onSelect={() => handleExport('html', 'download')}>
-                      ↓ download .html
-                    </MenuItem>
-                    <div className="my-1 h-px bg-ink-700" />
-                    <MenuItem onSelect={() => handleExport('markdown', 'copy')}>
-                      ⧉ copy as markdown
-                    </MenuItem>
-                    <MenuItem onSelect={() => handleExport('html', 'copy')}>
-                      ⧉ copy as html
-                    </MenuItem>
-                  </Menu>
-                </span>
+                <ExportMenu
+                  documentation={job.result.documentation}
+                  metadata={{
+                    language,
+                    generatedAt: new Date(),
+                    qualityScore: job.result.qualityScore?.score,
+                  }}
+                />
+                <Button size="sm" variant="ghost" onClick={handleShare} disabled={!job.result.id}>
+                  share
+                </Button>
               </span>
             ) : undefined
           }
         >
-          <div className="min-h-0 flex-1 overflow-y-auto">
-            {documentation ? (
+          <div ref={outputRef} className="min-h-0 flex-1 overflow-y-auto">
+            {job.result ? (
               <div className="flex min-h-full flex-col gap-4 p-4">
-                {/* the printout */}
-                <div
-                  data-sheet
-                  className="border border-paper-300 shadow-[0_14px_40px_rgba(0,0,0,0.5)]"
-                >
-                  <div className="markdown-content">
-                    <ReactMarkdown
-                      remarkPlugins={[remarkGfm]}
-                      components={{
-                        code({ node, inline, className, children, ...props }: any) {
-                          const match = /language-(\w+)/.exec(className || '')
-                          return !inline && match ? (
-                            <SyntaxHighlighter
-                              style={paperTheme}
-                              language={match[1]}
-                              PreTag="div"
-                              {...props}
-                            >
-                              {String(children).replace(/\n$/, '')}
-                            </SyntaxHighlighter>
-                          ) : (
-                            <code className={className} {...props}>
-                              {children}
-                            </code>
-                          )
-                        }
-                      }}
-                    >
-                      {documentation}
-                    </ReactMarkdown>
-
-                    {diagram && (
-                      <div className="border-t border-paper-300 px-2 pt-4 pb-2">
-                        <button
-                          className="flex w-full cursor-pointer items-center justify-between font-mono text-[11px] tracking-[0.14em] text-print-400 uppercase"
-                          onClick={() => setIsDiagramCollapsed(!isDiagramCollapsed)}
-                        >
-                          <span>figure 1 — flow diagram</span>
-                          <span aria-hidden>{isDiagramCollapsed ? '▸' : '▾'}</span>
-                        </button>
-                        {!isDiagramCollapsed && (
-                          <div ref={diagramRef} className="mt-3 flex justify-center overflow-x-auto" />
-                        )}
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                {qualityScore && <QualityScore qualityScore={qualityScore} />}
+                <DocumentSheet
+                  documentation={job.result.documentation}
+                  diagram={job.result.diagram}
+                  qualityScore={job.result.qualityScore}
+                  diagramCollapsed={isDiagramCollapsed}
+                  onDiagramToggle={() => setIsDiagramCollapsed(!isDiagramCollapsed)}
+                />
+              </div>
+            ) : isLoading && job.streamText ? (
+              // Live SSE text (see useGenerationJob) — the arriving text IS
+              // the typewriter, so there's no tween to gate on reduced motion
+              // here; DocumentSheet handles the caret decoration itself.
+              <div className="flex min-h-full flex-col gap-4 p-4">
+                <DocumentSheet documentation={job.streamText} streaming />
               </div>
             ) : isLoading ? (
               <div className="p-5 font-mono text-[13px] leading-loose">
-                {bootLog.map((line, i) => (
+                {job.statusLog.map((line, i) => (
                   <div key={i} className="text-ink-300">
                     <span className="text-phosphor-400">&gt;</span> {line}
                   </div>

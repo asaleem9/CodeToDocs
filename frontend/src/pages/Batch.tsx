@@ -1,14 +1,9 @@
 import { useState, useEffect, useRef } from 'react'
 import { useLocation } from 'react-router-dom'
 import axios from 'axios'
-import ReactMarkdown from 'react-markdown'
-import remarkGfm from 'remark-gfm'
-import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
-import { paperTheme } from '../lib/syntaxTheme'
-import { renderMermaid } from '../lib/mermaid'
 import { useGSAP, bootSequence } from '../lib/motion'
 import { useBatch } from '../contexts/BatchContext'
-import QualityScore from '../components/QualityScore'
+import DocumentSheet from '../components/DocumentSheet'
 import Panel from '../components/ui/Panel'
 import Button from '../components/ui/Button'
 import Badge from '../components/ui/Badge'
@@ -17,7 +12,7 @@ import ProgressBar from '../components/ui/ProgressBar'
 import SectionHeader from '../components/ui/SectionHeader'
 import { showErrorToast, showSuccessToast, showLoadingToast, dismissToast } from '../utils/errorHandler'
 import { downloadAsHTML, downloadAsPDF } from '../utils/exportUtils'
-
+import type { QualityScoreData } from '../types'
 
 interface BatchProgress {
   total: number
@@ -32,7 +27,7 @@ interface DocumentedFile {
   language: string
   documentation: string
   diagram?: string
-  qualityScore?: any
+  qualityScore?: QualityScoreData
   success: boolean
   error?: string
 }
@@ -69,28 +64,16 @@ const FEATURES = [
   { title: 'DOWNLOAD ALL', body: 'Export complete documentation as Markdown' },
 ]
 
-// Shared ReactMarkdown code renderer — syntax highlighting on the paper sheet.
-const markdownComponents = {
-  code({ node, inline, className, children, ...props }: any) {
-    const match = /language-(\w+)/.exec(className || '')
-    return !inline && match ? (
-      <SyntaxHighlighter style={paperTheme} language={match[1]} PreTag="div" {...props}>
-        {String(children).replace(/\n$/, '')}
-      </SyntaxHighlighter>
-    ) : (
-      <code className={className} {...props}>
-        {children}
-      </code>
-    )
-  },
-}
-
 function Batch() {
   const location = useLocation()
   const batchContext = useBatch()
   const [repoUrl, setRepoUrl] = useState<string>('')
   const [result, setResult] = useState<BatchResult | null>(null)
   const [selectedDoc, setSelectedDoc] = useState<DocumentedFile | null>(null)
+  // Explicit drill-in flag for the mobile TOC/detail layout — selectedDoc
+  // being null legitimately means "show the full repo doc", so it can't
+  // double as the mobile "am I showing detail" flag the way History's can.
+  const [mobileDetailOpen, setMobileDetailOpen] = useState<boolean>(false)
   const [maxFiles, setMaxFiles] = useState<number>(50)
   const [uploadMode, setUploadMode] = useState<'url' | 'zip'>('url')
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
@@ -99,9 +82,9 @@ function Batch() {
   const [localIsProcessing, setLocalIsProcessing] = useState<boolean>(false)
   const [incrementalDocs, setIncrementalDocs] = useState<DocumentedFile[]>([])
   const [isDiagramCollapsed, setIsDiagramCollapsed] = useState<boolean>(false)
+  const [startError, setStartError] = useState<string | null>(null)
   const progressInterval = useRef<ReturnType<typeof setInterval> | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
-  const diagramRef = useRef<HTMLDivElement>(null)
   const docsFetchedRef = useRef<number>(0)
   const logRef = useRef<HTMLDivElement>(null)
   const scopeRef = useRef<HTMLDivElement>(null)
@@ -168,6 +151,7 @@ function Batch() {
           if (progressInterval.current) {
             clearInterval(progressInterval.current)
           }
+          setStartError(progressRes.data.error)
           showErrorToast({ response: { data: { error: progressRes.data.error } } })
         }
       } catch (err) {
@@ -203,14 +187,6 @@ function Batch() {
       fetchResult()
     }
   }, [batchId, isProcessing, result])
-
-  // Render mermaid diagram when selected doc changes
-  useEffect(() => {
-    const diagram = selectedDoc?.diagram
-    if (diagram && diagramRef.current) {
-      renderMermaid(diagramRef.current, diagram)
-    }
-  }, [selectedDoc])
 
   // Keep the live file log pinned to the newest entry
   useEffect(() => {
@@ -266,8 +242,10 @@ function Batch() {
       }
 
       const loadingToastId = showLoadingToast('Starting batch processing...')
+      setStartError(null)
       setResult(null)
       setSelectedDoc(null)
+      setMobileDetailOpen(false)
       setIncrementalDocs([])
       docsFetchedRef.current = 0
 
@@ -281,6 +259,7 @@ function Batch() {
       } catch (err: any) {
         dismissToast(loadingToastId)
         showErrorToast(err)
+        setStartError(err?.response?.data?.error || err?.message || 'Failed to start batch processing')
       }
     } else {
       // New ZIP file upload processing
@@ -294,8 +273,10 @@ function Batch() {
       }
 
       const loadingToastId = showLoadingToast('Uploading and processing zip file...')
+      setStartError(null)
       setResult(null)
       setSelectedDoc(null)
+      setMobileDetailOpen(false)
       setIncrementalDocs([])
       docsFetchedRef.current = 0
 
@@ -325,6 +306,7 @@ function Batch() {
       } catch (err: any) {
         dismissToast(loadingToastId)
         showErrorToast(err)
+        setStartError(err?.response?.data?.error || err?.message || 'Failed to start batch processing')
       }
     }
   }
@@ -443,6 +425,15 @@ function Batch() {
         </p>
       </header>
 
+      {startError && (
+        <div className="flex flex-wrap items-center justify-between gap-3 border border-red/25 bg-red/10 px-4 py-3 font-mono text-[13px] text-red">
+          <span>{startError}</span>
+          <Button size="sm" variant="ghost" onClick={handleStartBatch}>
+            retry
+          </Button>
+        </div>
+      )}
+
       {/* input */}
       <div data-boot style={{ opacity: 0 }}>
         <Panel title="INPUT">
@@ -485,7 +476,7 @@ function Batch() {
                     placeholder="https://github.com/username/repository"
                     disabled={isProcessing}
                     spellCheck={false}
-                    className="w-full flex-1 bg-transparent py-2.5 font-mono text-[13.5px] text-ink-100 placeholder:text-ink-400 focus:outline-none disabled:opacity-40"
+                    className="w-full flex-1 bg-transparent py-2.5 font-mono text-[13.5px] text-ink-100 placeholder:text-ink-400 focus:outline-none disabled:opacity-40 max-md:text-[16px]"
                   />
                 </div>
               </div>
@@ -545,7 +536,7 @@ function Batch() {
                 min="1"
                 max="100"
                 disabled={isProcessing}
-                className="w-24 rounded-[2px] border border-ink-700 bg-ink-950/60 px-3 py-2 font-mono text-[13.5px] text-ink-100 transition-colors focus:border-phosphor-500 focus:outline-none disabled:opacity-40"
+                className="w-24 rounded-[2px] border border-ink-700 bg-ink-950/60 px-3 py-2 font-mono text-[13.5px] text-ink-100 transition-colors focus:border-phosphor-500 focus:outline-none disabled:opacity-40 max-md:text-[16px]"
               />
               <span className="font-sans text-[12px] text-ink-400">
                 Limit the number of files to process (1–100)
@@ -642,7 +633,12 @@ function Batch() {
           </div>
 
           <div className="grid min-h-0 grid-cols-1 gap-5 lg:grid-cols-[350px_1fr]">
-            <Panel title="CONTENTS" className="min-h-0 min-w-0 max-h-[800px] max-lg:max-h-[400px]">
+            <Panel
+              title="CONTENTS"
+              className={`min-h-0 min-w-0 max-h-[800px] max-lg:max-h-[400px] ${
+                mobileDetailOpen ? 'max-lg:hidden' : ''
+              }`}
+            >
               {/* summary strip */}
               <div className="grid shrink-0 grid-cols-3 gap-px border-b border-ink-700 bg-ink-700">
                 <div className="bg-ink-900 px-3 py-2.5 text-center">
@@ -674,7 +670,10 @@ function Batch() {
               <div className="min-h-0 flex-1 overflow-y-auto">
                 {result.fullRepoDocumentation && (
                   <div
-                    onClick={() => setSelectedDoc(null)}
+                    onClick={() => {
+                      setSelectedDoc(null)
+                      setMobileDetailOpen(true)
+                    }}
                     className={`cursor-pointer border-b border-l-2 border-b-ink-700/60 px-4 py-3 transition-colors ${
                       selectedDoc === null
                         ? 'border-l-phosphor-400 bg-phosphor-400/5'
@@ -693,7 +692,10 @@ function Batch() {
                 {result.documents.map((doc, index) => (
                   <div
                     key={index}
-                    onClick={() => setSelectedDoc(doc)}
+                    onClick={() => {
+                      setSelectedDoc(doc)
+                      setMobileDetailOpen(true)
+                    }}
                     className={`cursor-pointer border-b border-l-2 border-b-ink-700/60 px-4 py-3 transition-colors ${
                       selectedDoc === doc
                         ? 'border-l-phosphor-400 bg-phosphor-400/5'
@@ -729,90 +731,66 @@ function Batch() {
             <Panel
               title="DOCUMENT"
               active={!!selectedDoc || !!result.fullRepoDocumentation}
-              className="min-h-0 min-w-0 max-h-[800px] max-lg:max-h-[400px]"
+              className={`min-h-0 min-w-0 max-h-[800px] max-lg:h-[calc(100dvh-14rem)] ${
+                mobileDetailOpen ? '' : 'max-lg:hidden'
+              }`}
             >
-              <div className="min-h-0 flex-1 overflow-y-auto">
-                {selectedDoc ? (
-                  <div className="flex min-h-full flex-col gap-4 p-4">
-                    <div className="flex flex-wrap items-center justify-between gap-3">
-                      <h2 className="min-w-0 truncate font-mono text-[14px] text-ink-100">
-                        {selectedDoc.filePath}
-                      </h2>
-                      <Badge tone="phosphor">{selectedDoc.language}</Badge>
-                    </div>
+              <div className="flex min-h-0 flex-1 flex-col">
+                {/* drill-in back control — desktop shows both panes side by
+                    side, so this row only exists below lg */}
+                <div className="border-b border-ink-700/60 px-2 py-2 lg:hidden">
+                  <Button size="sm" variant="ghost" onClick={() => setMobileDetailOpen(false)}>
+                    ← back
+                  </Button>
+                </div>
+                <div className="min-h-0 flex-1 overflow-y-auto">
+                  {selectedDoc ? (
+                    <div className="flex min-h-full flex-col gap-4 p-4">
+                      <div className="flex flex-wrap items-center justify-between gap-3">
+                        <h2 className="min-w-0 truncate font-mono text-[14px] text-ink-100">
+                          {selectedDoc.filePath}
+                        </h2>
+                        <Badge tone="phosphor">{selectedDoc.language}</Badge>
+                      </div>
 
-                    {selectedDoc.success ? (
-                      <>
-                        {/* the printout */}
-                        <div className="border border-paper-300 shadow-[0_14px_40px_rgba(0,0,0,0.5)]">
-                          <div className="markdown-content">
-                            <ReactMarkdown
-                              remarkPlugins={[remarkGfm]}
-                              components={markdownComponents}
-                            >
-                              {selectedDoc.documentation}
-                            </ReactMarkdown>
-
-                            {selectedDoc.diagram && (
-                              <div className="border-t border-paper-300 px-2 pt-4 pb-2">
-                                <button
-                                  className="flex w-full cursor-pointer items-center justify-between font-mono text-[11px] tracking-[0.14em] text-print-400 uppercase"
-                                  onClick={() => setIsDiagramCollapsed(!isDiagramCollapsed)}
-                                >
-                                  <span>figure 1 — flow diagram</span>
-                                  <span aria-hidden>{isDiagramCollapsed ? '▸' : '▾'}</span>
-                                </button>
-                                {!isDiagramCollapsed && (
-                                  <div
-                                    ref={diagramRef}
-                                    className="mt-3 flex justify-center overflow-x-auto"
-                                  />
-                                )}
-                              </div>
-                            )}
-                          </div>
+                      {selectedDoc.success ? (
+                        <DocumentSheet
+                          documentation={selectedDoc.documentation}
+                          diagram={selectedDoc.diagram}
+                          qualityScore={selectedDoc.qualityScore}
+                          diagramCollapsed={isDiagramCollapsed}
+                          onDiagramToggle={() => setIsDiagramCollapsed(!isDiagramCollapsed)}
+                        />
+                      ) : (
+                        <div className="border border-red/25 bg-red/10 p-4">
+                          <p className="font-mono text-[13px] text-red">
+                            failed to generate documentation
+                          </p>
+                          <p className="mt-1 font-sans text-[13px] text-ink-300">
+                            {selectedDoc.error || 'Unknown error occurred'}
+                          </p>
                         </div>
-
-                        {selectedDoc.qualityScore && (
-                          <QualityScore qualityScore={selectedDoc.qualityScore} />
-                        )}
-                      </>
-                    ) : (
-                      <div className="border border-red/25 bg-red/10 p-4">
-                        <p className="font-mono text-[13px] text-red">
-                          failed to generate documentation
-                        </p>
-                        <p className="mt-1 font-sans text-[13px] text-ink-300">
-                          {selectedDoc.error || 'Unknown error occurred'}
-                        </p>
-                      </div>
-                    )}
-                  </div>
-                ) : result.fullRepoDocumentation ? (
-                  <div className="flex min-h-full flex-col gap-4 p-4">
-                    <div className="flex flex-wrap items-center justify-between gap-3">
-                      <h2 className="min-w-0 truncate font-mono text-[14px] text-ink-100">
-                        Full Repository Documentation
-                      </h2>
-                      <Badge tone="phosphor">complete overview</Badge>
+                      )}
                     </div>
-
-                    {/* the printout */}
-                    <div className="border border-paper-300 shadow-[0_14px_40px_rgba(0,0,0,0.5)]">
-                      <div className="markdown-content">
-                        <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
-                          {result.fullRepoDocumentation}
-                        </ReactMarkdown>
+                  ) : result.fullRepoDocumentation ? (
+                    <div className="flex min-h-full flex-col gap-4 p-4">
+                      <div className="flex flex-wrap items-center justify-between gap-3">
+                        <h2 className="min-w-0 truncate font-mono text-[14px] text-ink-100">
+                          Full Repository Documentation
+                        </h2>
+                        <Badge tone="phosphor">complete overview</Badge>
                       </div>
+
+                      <DocumentSheet documentation={result.fullRepoDocumentation} />
                     </div>
-                  </div>
-                ) : (
-                  <EmptyState
-                    glyph="¶"
-                    title="select a file"
-                    hint="Pick a file from the table of contents to view its documentation."
-                  />
-                )}
+                  ) : (
+                    <EmptyState
+                      glyph="¶"
+                      title="select a file"
+                      hint="Pick a file from the table of contents to view its documentation."
+                    />
+                  )}
+                </div>
               </div>
             </Panel>
           </div>

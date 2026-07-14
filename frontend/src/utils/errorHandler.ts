@@ -15,12 +15,12 @@ export function parseError(error: any): ErrorResponse {
     return {
       message: error.message,
       userMessage: 'Unable to connect to the server',
-      suggestion: 'Please check if the backend server is running on port 3001'
+      suggestion: 'Check your internet connection and try again'
     };
   }
 
   // Timeout errors
-  if (error.code === 'ECONNABORTED' || error.message.includes('timeout')) {
+  if (error.code === 'ECONNABORTED' || error.message?.includes('timeout')) {
     return {
       message: error.message,
       userMessage: 'The request took too long to complete',
@@ -35,7 +35,7 @@ export function parseError(error: any): ErrorResponse {
     return {
       message: error.response?.data?.error || error.message,
       userMessage: 'API authentication failed',
-      suggestion: 'Please check your API key in Settings and make sure it\'s valid'
+      suggestion: 'Your session may have expired — try logging in again'
     };
   }
 
@@ -73,7 +73,7 @@ export function parseError(error: any): ErrorResponse {
       return {
         message: errorMsg,
         userMessage: 'Invalid programming language',
-        suggestion: 'Please select a supported language (JavaScript, Python, TypeScript, or Java)'
+        suggestion: 'Pick a language from the selector and try again'
       };
     }
 

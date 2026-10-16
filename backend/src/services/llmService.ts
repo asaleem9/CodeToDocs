@@ -105,12 +105,12 @@ Return ONLY the Mermaid diagram code without any explanation or markdown code bl
     const [docMessage, diagramMessage] = await Promise.all([
       anthropic.messages.create({
         model: selectedModel,
-        max_tokens: 4096,
+        max_tokens: 16000,
         messages: [{ role: 'user', content: documentationPrompt }],
       }),
       anthropic.messages.create({
         model: selectedModel,
-        max_tokens: 2048,
+        max_tokens: 8192,
         messages: [{ role: 'user', content: diagramPrompt }],
       }),
     ]);
@@ -241,13 +241,13 @@ Return ONLY the Mermaid diagram code without any explanation or markdown code bl
     // Diagram runs as a plain call alongside the streamed doc request.
     const diagramPromise = anthropic.messages.create({
       model: selectedModel,
-      max_tokens: 2048,
+      max_tokens: 8192,
       messages: [{ role: 'user', content: diagramPrompt }],
     });
 
     const docStream = anthropic.messages.stream({
       model: selectedModel,
-      max_tokens: 4096,
+      max_tokens: 16000,
       messages: [{ role: 'user', content: documentationPrompt }],
     });
     docStream.on('text', (textDelta) => options.onDelta(textDelta));
@@ -371,12 +371,12 @@ Return ONLY the Mermaid diagram code without any explanation or markdown code bl
     const [docMessage, diagramMessage] = await Promise.all([
       anthropic.messages.create({
         model: selectedModel,
-        max_tokens: 4096,
+        max_tokens: 16000,
         messages: [{ role: 'user', content: documentationPrompt }],
       }),
       anthropic.messages.create({
         model: selectedModel,
-        max_tokens: 2048,
+        max_tokens: 8192,
         messages: [{ role: 'user', content: diagramPrompt }],
       }),
     ]);

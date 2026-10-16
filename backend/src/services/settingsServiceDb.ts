@@ -19,7 +19,7 @@ export class SettingsServiceDb {
     if (!db) {
       // Return defaults if database not available
       return {
-        model: 'claude-haiku-4-5-20251001',
+        model: 'claude-haiku-5-5',
         additionalSettings: {},
       };
     }
@@ -33,7 +33,7 @@ export class SettingsServiceDb {
       if (!user) {
         // Return defaults for unknown user
         return {
-          model: 'claude-haiku-4-5-20251001',
+          model: 'claude-haiku-5-5',
           additionalSettings: {},
         };
       }
@@ -47,25 +47,25 @@ export class SettingsServiceDb {
         // Create default settings
         const [newSettings] = await db.insert(userSettings).values({
           userId: user.id,
-          claudeModel: 'claude-haiku-4-5-20251001',
+          claudeModel: 'claude-haiku-5-5',
           additionalSettings: {},
         }).returning();
 
         return {
-          model: newSettings.claudeModel || 'claude-haiku-4-5-20251001',
+          model: newSettings.claudeModel || 'claude-haiku-5-5',
           additionalSettings: (newSettings.additionalSettings as any) || {},
         };
       }
 
       return {
-        model: settings.claudeModel || 'claude-haiku-4-5-20251001',
+        model: settings.claudeModel || 'claude-haiku-5-5',
         additionalSettings: (settings.additionalSettings as any) || {},
       };
     } catch (error) {
       console.error('Error getting settings:', error);
       // Return defaults on error
       return {
-        model: 'claude-haiku-4-5-20251001',
+        model: 'claude-haiku-5-5',
         additionalSettings: {},
       };
     }
@@ -112,7 +112,7 @@ export class SettingsServiceDb {
         // Create new settings
         await db.insert(userSettings).values({
           userId: user.id,
-          claudeModel: newSettings.model || 'claude-haiku-4-5-20251001',
+          claudeModel: newSettings.model || 'claude-haiku-5-5',
           additionalSettings: (newSettings.additionalSettings || {}) as any,
         });
 
@@ -129,7 +129,7 @@ export class SettingsServiceDb {
    */
   async resetSettings(githubUsername: string): Promise<void> {
     await this.updateSettings(githubUsername, {
-      model: 'claude-haiku-4-5-20251001',
+      model: 'claude-haiku-5-5',
       additionalSettings: {},
     });
   }
@@ -156,7 +156,7 @@ export class SettingsServiceDb {
     if (!db) {
       // Return defaults if database not available
       return {
-        model: 'claude-haiku-4-5-20251001',
+        model: 'claude-haiku-5-5',
         additionalSettings: {},
       };
     }
@@ -169,7 +169,7 @@ export class SettingsServiceDb {
       if (!user) {
         // Return defaults for unknown user
         return {
-          model: 'claude-haiku-4-5-20251001',
+          model: 'claude-haiku-5-5',
           additionalSettings: {},
         };
       }
@@ -182,25 +182,25 @@ export class SettingsServiceDb {
         // Create default settings
         const [newSettings] = await db.insert(userSettings).values({
           userId: user.id,
-          claudeModel: 'claude-haiku-4-5-20251001',
+          claudeModel: 'claude-haiku-5-5',
           additionalSettings: {},
         }).returning();
 
         return {
-          model: newSettings.claudeModel || 'claude-haiku-4-5-20251001',
+          model: newSettings.claudeModel || 'claude-haiku-5-5',
           additionalSettings: (newSettings.additionalSettings as any) || {},
         };
       }
 
       return {
-        model: settings.claudeModel || 'claude-haiku-4-5-20251001',
+        model: settings.claudeModel || 'claude-haiku-5-5',
         additionalSettings: (settings.additionalSettings as any) || {},
       };
     } catch (error) {
       console.error('Error getting settings by GitHub id:', error);
       // Return defaults on error
       return {
-        model: 'claude-haiku-4-5-20251001',
+        model: 'claude-haiku-5-5',
         additionalSettings: {},
       };
     }
@@ -245,7 +245,7 @@ export class SettingsServiceDb {
         // Create new settings
         await db.insert(userSettings).values({
           userId: user.id,
-          claudeModel: newSettings.model || 'claude-haiku-4-5-20251001',
+          claudeModel: newSettings.model || 'claude-haiku-5-5',
           additionalSettings: (newSettings.additionalSettings || {}) as any,
         });
 

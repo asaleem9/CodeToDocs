@@ -29,7 +29,7 @@ interface ModelOption {
 
 // Used only if GET /api/settings/models fails, so the page still renders a
 // working (if minimal) model choice.
-const FALLBACK_MODELS: ModelOption[] = [{ id: 'claude-haiku-4-5-20251001', label: 'Claude Haiku 4.5' }]
+const FALLBACK_MODELS: ModelOption[] = [{ id: 'claude-haiku-5-5', label: 'Claude Haiku 5.5' }]
 
 const EVENT_DOT: Record<'received' | 'processed' | 'error', string> = {
   received: 'text-amber',

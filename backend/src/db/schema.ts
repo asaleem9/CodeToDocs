@@ -76,7 +76,7 @@ export const documentation = pgTable('documentation', {
 export const userSettings = pgTable('user_settings', {
   id: serial('id').primaryKey(),
   userId: integer('user_id').unique().references(() => users.id, { onDelete: 'cascade' }).notNull(),
-  claudeModel: varchar('claude_model', { length: 100 }).default('claude-haiku-4-5-20251001'),
+  claudeModel: varchar('claude_model', { length: 100 }).default('claude-haiku-5-5'),
   additionalSettings: jsonb('additional_settings').default({}),
   createdAt: timestamp('created_at').defaultNow(),
   updatedAt: timestamp('updated_at').defaultNow(),

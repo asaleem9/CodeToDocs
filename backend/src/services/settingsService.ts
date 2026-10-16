@@ -8,13 +8,12 @@
 import { settingsServiceDb } from './settingsServiceDb';
 
 export const ALLOWED_MODELS = [
-  { id: 'claude-sonnet-5', label: 'Claude Sonnet 5' },
-  { id: 'claude-haiku-4-5-20251001', label: 'Claude Haiku 4.5' },
+  { id: 'claude-haiku-5-5', label: 'Claude Haiku 5.5' },
 ] as const;
 
 export type ClaudeModelId = typeof ALLOWED_MODELS[number]['id'];
 
-export const DEFAULT_MODEL: ClaudeModelId = 'claude-haiku-4-5-20251001';
+export const DEFAULT_MODEL: ClaudeModelId = 'claude-haiku-5-5';
 
 const ALLOWED_MODEL_IDS = new Set<string>(ALLOWED_MODELS.map((m) => m.id));
 

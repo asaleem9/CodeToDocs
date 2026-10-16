@@ -47,3 +47,7 @@ lerna-debug.log*
 # Video productions (HyperFrames projects with their own node_modules/renders)
 videos/
 .superpowers/
+
+# Claude Code project guide (local only, never published)
+CLAUDE.md
+CLAUDE.local.md
